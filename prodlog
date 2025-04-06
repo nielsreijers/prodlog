@@ -5,29 +5,106 @@ import pty
 import tty
 import termios
 import datetime
+import socket
 from pathlib import Path
 
+def show_usage():
+    print("Usage: prodlog record")
+    print("       Starts a new shell session and records all output to ~/.prodlog/output.log")
+    print("Usage: prodlog run <command> [args...]")
+    print("       Runs the specified command and records its output")
+    sys.exit(1)
+
 def main():
+    if len(sys.argv) < 2:
+        show_usage()
+
+    if sys.argv[1] == "record":
+        if len(sys.argv) != 2:
+            show_usage()
+        record_shell()
+    elif sys.argv[1] == "run":
+        if len(sys.argv) < 3:
+            show_usage()
+        run_command(sys.argv[2:])
+    else:
+        show_usage()
+
+def run_command(command):
+    # Print start marker
+    print("\n##### PRODLOG START CAPTURE #####")
+
+    # Create header
+    hostname = socket.gethostname()
+    timestamp = datetime.datetime.now().isoformat()
+    cmd_str = ' '.join(command)
+    header = f"\n=== Host: {hostname} ===\n=== Time: {timestamp} ===\n=== Command: {cmd_str} ===\n"
+
+    # Write header to terminal
+    print(header, end='')
+
+    # Execute command and output to terminal
+    try:
+        process = os.popen(' '.join(command))
+        output = process.read()
+        print(output, end='')
+    except Exception as e:
+        print(f"\nError: {str(e)}\n", end='')
+
+    # Print stop marker
+    print("\n##### PRODLOG STOP CAPTURE #####")
+
+def record_shell():
     # Configure log file location
     log_file = Path.home() / ".prodlog" / "output.log"
     log_file.parent.mkdir(exist_ok=True)
 
-    # Create timestamp for session
-    timestamp = datetime.datetime.now().isoformat()
-    start_marker = f"\n=== START: Shell Session ({timestamp}) ===\n"
-    end_marker = f"\n=== END: Shell Session ({timestamp}) ===\n"
-
-    # Write start marker
-    with open(log_file, 'a') as f:
-        f.write(start_marker)
-
     def read(fd):
+        # Add buffer as instance variable if not present
+        if not hasattr(read, 'buffer'):
+            read.buffer = ''
+        if not hasattr(read, 'capturing'):
+            read.capturing = False
+        
+        # Read raw data
         data = os.read(fd, 1024)
-        # Write to log file
-        with open(log_file, 'a') as f:
-            f.write(data.decode(errors='replace'))
-            f.flush()
+        decoded = data.decode(errors='replace')
+        
+        # Add to buffer
+        read.buffer += decoded
+        
+        # Process complete lines
+        lines = read.buffer.split('\n')
+        # Keep the last potentially partial line in the buffer
+        read.buffer = lines[-1]
+        # Process all complete lines
+        for line in lines[:-1]:
+            # Check for start/stop markers
+            if "##### PRODLOG START CAPTURE #####" in line:
+                read.capturing = True
+                with open(log_file, 'a') as f:
+                    f.write(line + '\n')
+                    f.flush()
+                continue
+            
+            if "##### PRODLOG STOP CAPTURE #####" in line:
+                # Write the stop marker before turning off capturing
+                with open(log_file, 'a') as f:
+                    f.write(line + '\n')
+                    f.flush()
+                read.capturing = False
+                continue
+            
+            # Only write to log file if we're capturing
+            if read.capturing:
+                with open(log_file, 'a') as f:
+                    f.write(line + '\n')
+                    f.flush()
+        
         return data
+    
+    # Initialize capturing state
+    read.capturing = False
 
     # Save original terminal settings
     old_settings = termios.tcgetattr(sys.stdin)
@@ -70,14 +147,12 @@ def main():
                     break
 
     except Exception as e:
-        with open(log_file, 'a') as f:
-            f.write(f"\nError: {str(e)}\n")
+        if read.capturing:
+            with open(log_file, 'a') as f:
+                f.write(f"\nError: {str(e)}\n")
     finally:
         # Restore original terminal settings
         termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
-        # Write end marker
-        with open(log_file, 'a') as f:
-            f.write(end_marker)
 
 if __name__ == "__main__":
     import select  # Import here to avoid potential circular imports
