@@ -31,16 +31,24 @@ def main():
         show_usage()
 
 def run_command(command):
-    # Print start marker
-    print("\n##### PRODLOG START CAPTURE #####")
-
-    # Create header
+    # Record start time
+    start_time = datetime.datetime.now()
     hostname = socket.gethostname()
-    timestamp = datetime.datetime.now().isoformat()
     cmd_str = ' '.join(command)
-    header = f"\n=== Host: {hostname} ===\n=== Time: {timestamp} ===\n=== Command: {cmd_str} ===\n"
+    
+    header = f"""
+╔══════════════════════════════════════════════════════════════════════════════
+║ Host: {hostname}
+║ Start: {start_time.isoformat()}
+╠══════════════════════════════════════════════════════════════════════════════
+║ Command: {cmd_str}
+╠══════════════════════════════════════════════════════════════════════════════
+"""
 
-    # Write header to terminal
+    # Print start marker (hidden in log but triggers capture)
+    print("\n##### PRODLOG START CAPTURE #####")
+    
+    # Write formatted header
     print(header, end='')
 
     # Execute command and output to terminal
@@ -49,10 +57,24 @@ def run_command(command):
         output = process.read()
         print(output, end='')
     except Exception as e:
-        print(f"\nError: {str(e)}\n", end='')
+        print(f"║ Error: {str(e)}\n", end='')
 
-    # Print stop marker
-    print("\n##### PRODLOG STOP CAPTURE #####")
+    # Record end time and calculate duration
+    end_time = datetime.datetime.now()
+    duration_ms = (end_time - start_time).total_seconds() * 1000
+
+    footer = f"""
+╠══════════════════════════════════════════════════════════════════════════════
+║ End: {end_time.isoformat()}
+║ Duration: {duration_ms:.2f}ms
+╚══════════════════════════════════════════════════════════════════════════════
+"""
+
+    # Write formatted footer
+    print(footer, end='')
+    
+    # Print stop marker (hidden in log but triggers capture)
+    print("##### PRODLOG STOP CAPTURE #####")
 
 def record_shell():
     # Configure log file location
@@ -79,19 +101,12 @@ def record_shell():
         read.buffer = lines[-1]
         # Process all complete lines
         for line in lines[:-1]:
-            # Check for start/stop markers
+            # Check for start/stop markers but don't log them
             if "##### PRODLOG START CAPTURE #####" in line:
                 read.capturing = True
-                with open(log_file, 'a') as f:
-                    f.write(line + '\n')
-                    f.flush()
                 continue
             
             if "##### PRODLOG STOP CAPTURE #####" in line:
-                # Write the stop marker before turning off capturing
-                with open(log_file, 'a') as f:
-                    f.write(line + '\n')
-                    f.flush()
                 read.capturing = False
                 continue
             
