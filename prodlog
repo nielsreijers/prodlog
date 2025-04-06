@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+import sys
+import os
+import pty
+import tty
+import termios
+import datetime
+from pathlib import Path
+
+def main():
+    # Configure log file location
+    log_file = Path.home() / ".prodlog" / "output.log"
+    log_file.parent.mkdir(exist_ok=True)
+
+    # Create timestamp for session
+    timestamp = datetime.datetime.now().isoformat()
+    start_marker = f"\n=== START: Shell Session ({timestamp}) ===\n"
+    end_marker = f"\n=== END: Shell Session ({timestamp}) ===\n"
+
+    # Write start marker
+    with open(log_file, 'a') as f:
+        f.write(start_marker)
+
+    def read(fd):
+        data = os.read(fd, 1024)
+        # Write to log file
+        with open(log_file, 'a') as f:
+            f.write(data.decode(errors='replace'))
+            f.flush()
+        return data
+
+    # Save original terminal settings
+    old_settings = termios.tcgetattr(sys.stdin)
+    
+    try:
+        # Create pseudo-terminal
+        pid, fd = pty.fork()
+        
+        if pid == 0:  # Child process
+            # Execute user's shell
+            shell = os.environ.get('SHELL', '/bin/bash')
+            os.execv(shell, [shell])
+        else:  # Parent process
+            # Set raw mode
+            tty.setraw(sys.stdin.fileno())
+            
+            while True:
+                try:
+                    # Watch both original input and child's output
+                    rfds = [sys.stdin, fd]
+                    reads, _, _ = select.select(rfds, [], [])
+
+                    for read_fd in reads:
+                        if read_fd == sys.stdin:
+                            # Forward input to child
+                            data = os.read(sys.stdin.fileno(), 1024)
+                            os.write(fd, data)
+                        else:
+                            # Forward child's output to stdout
+                            try:
+                                data = read(fd)
+                                if not data:
+                                    raise EOFError
+                                os.write(sys.stdout.fileno(), data)
+                            except EOFError:
+                                # Child process ended
+                                raise
+
+                except (EOFError, OSError):
+                    break
+
+    except Exception as e:
+        with open(log_file, 'a') as f:
+            f.write(f"\nError: {str(e)}\n")
+    finally:
+        # Restore original terminal settings
+        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
+        # Write end marker
+        with open(log_file, 'a') as f:
+            f.write(end_marker)
+
+if __name__ == "__main__":
+    import select  # Import here to avoid potential circular imports
+    main()
