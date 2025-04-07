@@ -81,16 +81,38 @@ def record_shell():
     log_file = Path.home() / ".prodlog" / "output.log"
     log_file.parent.mkdir(exist_ok=True)
 
+    # Add this function to handle window size changes
+    def set_window_size(fd):
+        # Get the window size of our terminal
+        import struct, fcntl, termios
+        size = struct.pack('HHHH', 0, 0, 0, 0)
+        size = fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, size)
+        rows, cols, _, _ = struct.unpack('HHHH', size)
+        # Set the child terminal to the same size
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
+
     def read(fd):
         # Add buffer as instance variable if not present
         if not hasattr(read, 'buffer'):
             read.buffer = ''
         if not hasattr(read, 'capturing'):
             read.capturing = False
+        if not hasattr(read, 'alternate_screen'):
+            read.alternate_screen = False
         
         # Read raw data
         data = os.read(fd, 1024)
         decoded = data.decode(errors='replace')
+        
+        # Check for alternate screen mode sequences
+        if '\x1b[?1049h' in decoded:  # Enter alternate screen
+            read.alternate_screen = True
+            return data  # Pass through raw data
+        elif '\x1b[?1049l' in decoded:  # Exit alternate screen
+            read.alternate_screen = False
+            return data  # Pass through raw data
+        elif read.alternate_screen:
+            return data  # Pass through raw data while in alternate screen
         
         # Add to buffer
         read.buffer += decoded
@@ -115,7 +137,8 @@ def record_shell():
                 continue
             
             # Add prefix to the line for terminal display
-            modified_line = f"pl] {line}\n"
+            prefix = "pl rec] " if read.capturing else "pl] "
+            modified_line = f"{prefix}{line}\n"
             modified_data += modified_line
             
             # Only write to log file if we're capturing
@@ -128,7 +151,8 @@ def record_shell():
         if lines[-1]:
             if decoded.endswith('\n'):
                 # If it's a complete line, add prefix
-                modified_data += f"pl] {lines[-1]}\n"
+                prefix = "pl rec] " if read.capturing else "pl] "
+                modified_data += f"{prefix}{lines[-1]}\n"
             else:
                 # If it's a prompt (no newline), clear line and rewrite with prefix
                 # Replace any cursor positioning with adjusted position for our prefix
@@ -139,16 +163,17 @@ def record_shell():
                     modified_line = parts[0]
                     for part in parts[1:]:
                         if 'C' in part:
-                            # Add 4 to the number before 'C' for our "pl] " prefix
+                            # Add length difference between "pl rec] " (8 chars) and "pl] " (4 chars)
                             num_end = part.find('C')
-                            num = int(part[:num_end]) + 4
+                            num = int(part[:num_end]) + (8 if read.capturing else 4)
                             modified_line += f'\x1b[{num}C'
                             modified_line += part[num_end+1:]
                         else:
                             modified_line += '\x1b[' + part
                     line = modified_line
                 
-                modified_data += f"\033[2K\rpl] {line}"
+                prefix = "pl rec] " if read.capturing else "pl] "
+                modified_data += f"\033[2K\r{prefix}{line}"
         
         # Return the modified data for terminal display
         return modified_data.encode()
@@ -168,6 +193,9 @@ def record_shell():
             shell = os.environ.get('SHELL', '/bin/bash')
             os.execv(shell, [shell])
         else:  # Parent process
+            # Set initial window size
+            set_window_size(fd)
+            
             # Set raw mode
             tty.setraw(sys.stdin.fileno())
             
@@ -181,6 +209,8 @@ def record_shell():
                         if read_fd == sys.stdin:
                             # Forward input to child
                             data = os.read(sys.stdin.fileno(), 1024)
+                            if data == b'\x1c':  # SIGWINCH - window size changed
+                                set_window_size(fd)
                             os.write(fd, data)
                         else:
                             # Forward child's output to stdout
