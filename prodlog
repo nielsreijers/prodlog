@@ -99,9 +99,13 @@ def record_shell():
         lines = read.buffer.split('\n')
         # Keep the last potentially partial line in the buffer
         read.buffer = lines[-1]
+        
+        # Prepare modified data for terminal display
+        modified_data = ''
+        
         # Process all complete lines
         for line in lines[:-1]:
-            # Check for start/stop markers but don't log them
+            # Check for start/stop markers
             if "##### PRODLOG START CAPTURE #####" in line:
                 read.capturing = True
                 continue
@@ -110,13 +114,44 @@ def record_shell():
                 read.capturing = False
                 continue
             
+            # Add prefix to the line for terminal display
+            modified_line = f"pl] {line}\n"
+            modified_data += modified_line
+            
             # Only write to log file if we're capturing
             if read.capturing:
                 with open(log_file, 'a') as f:
                     f.write(line + '\n')
                     f.flush()
         
-        return data
+        # Handle any remaining partial line (likely a prompt)
+        if lines[-1]:
+            if decoded.endswith('\n'):
+                # If it's a complete line, add prefix
+                modified_data += f"pl] {lines[-1]}\n"
+            else:
+                # If it's a prompt (no newline), clear line and rewrite with prefix
+                # Replace any cursor positioning with adjusted position for our prefix
+                line = lines[-1]
+                if '\x1b[' in line and 'C' in line:
+                    # Find cursor positioning commands and adjust them
+                    parts = line.split('\x1b[')
+                    modified_line = parts[0]
+                    for part in parts[1:]:
+                        if 'C' in part:
+                            # Add 4 to the number before 'C' for our "pl] " prefix
+                            num_end = part.find('C')
+                            num = int(part[:num_end]) + 4
+                            modified_line += f'\x1b[{num}C'
+                            modified_line += part[num_end+1:]
+                        else:
+                            modified_line += '\x1b[' + part
+                    line = modified_line
+                
+                modified_data += f"\033[2K\rpl] {line}"
+        
+        # Return the modified data for terminal display
+        return modified_data.encode()
     
     # Initialize capturing state
     read.capturing = False
