@@ -45,6 +45,9 @@ def run_command(command):
 ╠══════════════════════════════════════════════════════════════════════════════
 """
 
+    # Print warning that will be hidden when running under record
+    print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
+
     # Print start marker (hidden in log but triggers capture)
     print("\n##### PRODLOG START CAPTURE #####")
     
@@ -75,6 +78,7 @@ def run_command(command):
     
     # Print stop marker (hidden in log but triggers capture)
     print("##### PRODLOG STOP CAPTURE #####")
+    print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
 
 def record_shell():
     # Configure log file location
@@ -127,7 +131,9 @@ def record_shell():
         
         # Process all complete lines
         for line in lines[:-1]:
-            # Check for start/stop markers
+            # Skip warning and start/stop markers
+            if "##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####" in line:
+                continue
             if "##### PRODLOG START CAPTURE #####" in line:
                 read.capturing = True
                 continue
