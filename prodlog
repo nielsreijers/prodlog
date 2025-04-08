@@ -142,14 +142,9 @@ def record_shell():
         
         # Process all complete lines
         for line in lines[:-1]:
-            # Skip warning and start/stop markers
+            # Replace warning with "being recorded" message
             if "##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####" in line:
-                continue
-            if "##### PRODLOG START CAPTURE #####" in line:
-                read.capturing = True
-                continue
-            if "##### PRODLOG STOP CAPTURE #####" in line:
-                read.capturing = False
+                modified_data += "##### OUTPUT RECORDED BY PRODLOG #####\n"
                 continue
             
             # Handle header and footer lines
@@ -158,6 +153,14 @@ def record_shell():
                     # Write to log file without the marker prefix
                     with open(log_file, 'a') as f:
                         f.write(line[20:] + '\n')  # Skip "##### PRODLOG HEADER " or "##### PRODLOG FOOTER "
+                continue
+            
+            if "##### PRODLOG START CAPTURE #####" in line:
+                read.capturing = True
+                continue
+            
+            if "##### PRODLOG STOP CAPTURE #####" in line:
+                read.capturing = False
                 continue
             
             # Output regular lines to terminal and log
