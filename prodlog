@@ -7,6 +7,8 @@ import termios
 import datetime
 import socket
 from pathlib import Path
+import select
+import subprocess
 
 def show_usage():
     print("Usage: prodlog record")
@@ -61,23 +63,50 @@ def run_command(command):
         sys.stdout.write(header + '\n')
         sys.stdout.flush()
 
-        # Execute command and stream output to terminal
-        import subprocess
-        process = subprocess.Popen(command, 
-                                 stdout=subprocess.PIPE, 
-                                 stderr=subprocess.STDOUT,
-                                 bufsize=1,
-                                 universal_newlines=True)
-        
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                sys.stdout.write(output)
-                sys.stdout.flush()
-        
-        rc = process.poll()
+        # Execute command in a PTY
+        master_fd, slave_fd = pty.openpty()
+        process = subprocess.Popen(command,
+                                 stdin=slave_fd,
+                                 stdout=slave_fd,
+                                 stderr=slave_fd,
+                                 preexec_fn=os.setsid)
+        os.close(slave_fd)
+
+        # Save terminal settings
+        old_settings = termios.tcgetattr(sys.stdin)
+        try:
+            # Set raw mode
+            tty.setraw(sys.stdin)
+            
+            while process.poll() is None:  # Only run while process is alive
+                rfds = [sys.stdin, master_fd]
+                reads, _, _ = select.select(rfds, [], [], 0.1)  # Add timeout
+
+                for fd in reads:
+                    if fd == sys.stdin:
+                        # Forward input to process
+                        data = os.read(sys.stdin.fileno(), 1024)
+                        try:
+                            os.write(master_fd, data)
+                        except OSError:
+                            break  # Process probably died
+                    else:
+                        # Forward output to terminal
+                        try:
+                            data = os.read(master_fd, 1024)
+                            if data:
+                                sys.stdout.buffer.write(data)
+                                sys.stdout.buffer.flush()
+                        except OSError:
+                            break  # Process probably died
+
+        finally:
+            # Restore terminal settings
+            termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
 
         # Record end time and calculate duration
         end_time = datetime.datetime.now()
@@ -251,5 +280,4 @@ def record_shell():
         termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
 
 if __name__ == "__main__":
-    import select  # Import here to avoid potential circular imports
     main()
