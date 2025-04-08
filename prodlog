@@ -13,6 +13,7 @@ def show_usage():
     print("       Starts a new shell session and records all output to ~/.prodlog/output.log")
     print("Usage: prodlog run <command> [args...]")
     print("       Runs the specified command and records its output")
+    print("\n##### PRODLOG IS CURRENTLY INACTIVE")
     sys.exit(1)
 
 def main():
@@ -145,6 +146,11 @@ def record_shell():
             # Replace warning with "being recorded" message
             if "##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####" in line:
                 modified_data += "##### OUTPUT RECORDED BY PRODLOG #####\n"
+                continue
+            
+            # Replace inactive message with active message
+            if "##### PRODLOG IS CURRENTLY INACTIVE" in line:
+                modified_data += "Prodlog is currently ACTIVE\n"
                 continue
             
             # Handle header and footer lines
