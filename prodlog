@@ -16,69 +16,80 @@ def show_usage():
     sys.exit(1)
 
 def main():
-    if len(sys.argv) < 2:
-        show_usage()
+    try:
+        if len(sys.argv) < 2:
+            show_usage()
 
-    if sys.argv[1] == "record":
-        if len(sys.argv) != 2:
+        if sys.argv[1] == "record":
+            if len(sys.argv) != 2:
+                show_usage()
+            print("Starting record_shell...", file=sys.stderr)
+            record_shell()
+        elif sys.argv[1] == "run":
+            if len(sys.argv) < 3:
+                show_usage()
+            print("Starting run_command...", file=sys.stderr)
+            run_command(sys.argv[2:])
+        else:
             show_usage()
-        record_shell()
-    elif sys.argv[1] == "run":
-        if len(sys.argv) < 3:
-            show_usage()
-        run_command(sys.argv[2:])
-    else:
-        show_usage()
+    except Exception as e:
+        print(f"Error in main: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
 def run_command(command):
-    # Record start time
-    start_time = datetime.datetime.now()
-    hostname = socket.gethostname()
-    cmd_str = ' '.join(command)
-    
-    header = f"""
-╔══════════════════════════════════════════════════════════════════════════════
-║ Host: {hostname}
-║ Start: {start_time.isoformat()}
-╠══════════════════════════════════════════════════════════════════════════════
-║ Command: {cmd_str}
-╠══════════════════════════════════════════════════════════════════════════════
-"""
-
-    # Print warning that will be hidden when running under record
-    print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
-
-    # Print start marker (hidden in log but triggers capture)
-    print("\n##### PRODLOG START CAPTURE #####")
-    
-    # Write formatted header
-    print(header, end='')
-
-    # Execute command and output to terminal
     try:
-        process = os.popen(' '.join(command))
-        output = process.read()
-        print(output, end='')
-    except Exception as e:
-        print(f"║ Error: {str(e)}\n", end='')
+        # Record start time
+        start_time = datetime.datetime.now()
+        hostname = socket.gethostname()
+        cmd_str = ' '.join(command)
+        
+        header = f"""##### PRODLOG HEADER ===============================================================================
+##### PRODLOG HEADER | Host: {hostname}
+##### PRODLOG HEADER | Start: {start_time.isoformat()}
+##### PRODLOG HEADER ===============================================================================
+##### PRODLOG HEADER | Command: {cmd_str}
+##### PRODLOG HEADER ==============================================================================="""
 
-    # Record end time and calculate duration
-    end_time = datetime.datetime.now()
-    duration_ms = (end_time - start_time).total_seconds() * 1000
+        # Print warning that will be hidden when running under record
+        print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
 
-    footer = f"""
-╠══════════════════════════════════════════════════════════════════════════════
-║ End: {end_time.isoformat()}
-║ Duration: {duration_ms:.2f}ms
-╚══════════════════════════════════════════════════════════════════════════════
-"""
+        # Print start marker and header
+        print("\n##### PRODLOG START CAPTURE #####")
+        sys.stdout.write(header + '\n')
+        sys.stdout.flush()
 
-    # Write formatted footer
-    print(footer, end='')
+        # Execute command and output to terminal
+        try:
+            process = os.popen(' '.join(command))
+            output = process.read()
+            sys.stdout.write(output)
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"Command execution error: {str(e)}\n", file=sys.stderr)
+            raise
+
+        # Record end time and calculate duration
+        end_time = datetime.datetime.now()
+        duration_ms = (end_time - start_time).total_seconds() * 1000
+
+        footer = f"""##### PRODLOG FOOTER ===============================================================================
+##### PRODLOG FOOTER | End: {end_time.isoformat()}
+##### PRODLOG FOOTER | Duration: {duration_ms:.2f}ms
+##### PRODLOG FOOTER ==============================================================================="""
+
+        # Print footer and stop marker
+        sys.stdout.write(footer + '\n')
+        sys.stdout.flush()
+        print("##### PRODLOG STOP CAPTURE #####")
+        print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
     
-    # Print stop marker (hidden in log but triggers capture)
-    print("##### PRODLOG STOP CAPTURE #####")
-    print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
+    except Exception as e:
+        print(f"Error in run_command: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
 def record_shell():
     # Configure log file location
@@ -141,10 +152,18 @@ def record_shell():
                 read.capturing = False
                 continue
             
-            # Just output the line without prefix
+            # Handle header and footer lines
+            if line.startswith("##### PRODLOG HEADER ") or line.startswith("##### PRODLOG FOOTER "):
+                if read.capturing:
+                    # Write to log file without the marker prefix
+                    with open(log_file, 'a') as f:
+                        f.write(line[20:] + '\n')  # Skip "##### PRODLOG HEADER " or "##### PRODLOG FOOTER "
+                continue
+            
+            # Output regular lines to terminal and log
             modified_data += line + '\n'
             
-            # Only write to log file if we're capturing
+            # Only write regular lines to log file if we're capturing
             if read.capturing:
                 with open(log_file, 'a') as f:
                     f.write(line + '\n')
