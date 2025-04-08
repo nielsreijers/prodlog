@@ -137,15 +137,12 @@ def record_shell():
             if "##### PRODLOG START CAPTURE #####" in line:
                 read.capturing = True
                 continue
-            
             if "##### PRODLOG STOP CAPTURE #####" in line:
                 read.capturing = False
                 continue
             
-            # Add prefix to the line for terminal display
-            prefix = "pl rec] " if read.capturing else "pl] "
-            modified_line = f"{prefix}{line}\n"
-            modified_data += modified_line
+            # Just output the line without prefix
+            modified_data += line + '\n'
             
             # Only write to log file if we're capturing
             if read.capturing:
@@ -156,30 +153,11 @@ def record_shell():
         # Handle any remaining partial line (likely a prompt)
         if lines[-1]:
             if decoded.endswith('\n'):
-                # If it's a complete line, add prefix
-                prefix = "pl rec] " if read.capturing else "pl] "
-                modified_data += f"{prefix}{lines[-1]}\n"
+                # If it's a complete line, no prefix needed
+                modified_data += lines[-1] + '\n'
             else:
-                # If it's a prompt (no newline), clear line and rewrite with prefix
-                # Replace any cursor positioning with adjusted position for our prefix
-                line = lines[-1]
-                if '\x1b[' in line and 'C' in line:
-                    # Find cursor positioning commands and adjust them
-                    parts = line.split('\x1b[')
-                    modified_line = parts[0]
-                    for part in parts[1:]:
-                        if 'C' in part:
-                            # Add length difference between "pl rec] " (8 chars) and "pl] " (4 chars)
-                            num_end = part.find('C')
-                            num = int(part[:num_end]) + (8 if read.capturing else 4)
-                            modified_line += f'\x1b[{num}C'
-                            modified_line += part[num_end+1:]
-                        else:
-                            modified_line += '\x1b[' + part
-                    line = modified_line
-                
-                prefix = "pl rec] " if read.capturing else "pl] "
-                modified_data += f"\033[2K\r{prefix}{line}"
+                # If it's a prompt (no newline), just output it directly
+                modified_data += lines[-1]
         
         # Return the modified data for terminal display
         return modified_data.encode()
