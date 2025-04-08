@@ -61,15 +61,23 @@ def run_command(command):
         sys.stdout.write(header + '\n')
         sys.stdout.flush()
 
-        # Execute command and output to terminal
-        try:
-            process = os.popen(' '.join(command))
-            output = process.read()
-            sys.stdout.write(output)
-            sys.stdout.flush()
-        except Exception as e:
-            print(f"Command execution error: {str(e)}\n", file=sys.stderr)
-            raise
+        # Execute command and stream output to terminal
+        import subprocess
+        process = subprocess.Popen(command, 
+                                 stdout=subprocess.PIPE, 
+                                 stderr=subprocess.STDOUT,
+                                 bufsize=1,
+                                 universal_newlines=True)
+        
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                sys.stdout.write(output)
+                sys.stdout.flush()
+        
+        rc = process.poll()
 
         # Record end time and calculate duration
         end_time = datetime.datetime.now()
@@ -136,7 +144,7 @@ def record_shell():
         # Process complete lines
         lines = read.buffer.split('\n')
         # Keep the last potentially partial line in the buffer
-        read.buffer = lines[-1]
+        read.buffer = lines[-1] if not decoded.endswith('\n') else ''
         
         # Prepare modified data for terminal display
         modified_data = ''
@@ -179,13 +187,9 @@ def record_shell():
                     f.flush()
         
         # Handle any remaining partial line (likely a prompt)
-        if lines[-1]:
-            if decoded.endswith('\n'):
-                # If it's a complete line, no prefix needed
-                modified_data += lines[-1] + '\n'
-            else:
-                # If it's a prompt (no newline), just output it directly
-                modified_data += lines[-1]
+        if read.buffer:
+            # Always clear line and rewrite from start
+            modified_data += '\033[2K\r' + read.buffer
         
         # Return the modified data for terminal display
         return modified_data.encode()
