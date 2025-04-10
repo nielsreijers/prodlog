@@ -43,25 +43,16 @@ def main():
 
 def run_command(command):
     try:
-        # Record start time
-        start_time = datetime.datetime.now()
         hostname = socket.gethostname()
         cmd_str = ' '.join(command)
-        
-        header = f"""##### PRODLOG HEADER ===============================================================================
-##### PRODLOG HEADER | Host: {hostname}
-##### PRODLOG HEADER | Start: {start_time.isoformat()}
-##### PRODLOG HEADER ===============================================================================
-##### PRODLOG HEADER | Command: {cmd_str}
-##### PRODLOG HEADER ==============================================================================="""
 
         # Print warning that will be hidden when running under record
         print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
 
-        # Print start marker and header
+        # Print start marker with metadata
         print("\n##### PRODLOG START CAPTURE #####")
-        sys.stdout.write(header + '\n')
-        sys.stdout.flush()
+        print(hostname)
+        print(cmd_str)
 
         # Execute command in a PTY
         master_fd, slave_fd = pty.openpty()
@@ -108,19 +99,10 @@ def run_command(command):
             except OSError:
                 pass
 
-        # Record end time and calculate duration
-        end_time = datetime.datetime.now()
-        duration_ms = (end_time - start_time).total_seconds() * 1000
-
-        footer = f"""##### PRODLOG FOOTER ===============================================================================
-##### PRODLOG FOOTER | End: {end_time.isoformat()}
-##### PRODLOG FOOTER | Duration: {duration_ms:.2f}ms
-##### PRODLOG FOOTER ==============================================================================="""
-
-        # Print footer and stop marker
-        sys.stdout.write(footer + '\n')
-        sys.stdout.flush()
+        # Print stop marker
         print("##### PRODLOG STOP CAPTURE #####")
+
+        # Print warning that will be hidden when running under record
         print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
     
     except Exception as e:
@@ -150,8 +132,18 @@ def record_shell():
             read.buffer = ''
         if not hasattr(read, 'capturing'):
             read.capturing = False
+        if not hasattr(read, 'capture_metadata'):
+            read.capture_metadata = 0  # Counter for metadata lines after START
+        if not hasattr(read, 'hostname'):
+            read.hostname = None
+        if not hasattr(read, 'start_time'):
+            read.start_time = None
+        if not hasattr(read, 'command'):
+            read.command = None
         if not hasattr(read, 'alternate_screen'):
             read.alternate_screen = False
+        if not hasattr(read, 'current_logfile'):
+            read.current_logfile = None
         
         # Read raw data
         data = os.read(fd, 1024)
@@ -190,37 +182,96 @@ def record_shell():
                 modified_data += "Prodlog is currently ACTIVE\n"
                 continue
             
-            # Handle header and footer lines
-            if line.startswith("##### PRODLOG HEADER ") or line.startswith("##### PRODLOG FOOTER "):
-                if read.capturing:
-                    # Write to log file without the marker prefix
+            if read.capture_metadata > 0:
+                read.capture_metadata -= 1
+                if read.capture_metadata == 1:
+                    read.hostname = line.strip()  # Clean up the hostname
+                elif read.capture_metadata == 0:
+                    read.command = line
+                    # Get start time in UTC
+                    read.start_time = datetime.datetime.now(datetime.timezone.utc)
+                    
+                    # Create hostname directory and get log filename
+                    output_dir = Path.home() / ".prodlog" / "output" / read.hostname
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Get first word of command for filename
+                    first_word = read.command.split()[0]
+                    timestamp = read.start_time.strftime('%Y%m%d_%H%M%S')
+                    read.current_logfile = output_dir / f"{timestamp}-{first_word}.log"
+                    
+                    # Format timestamp nicely
+                    formatted_time = read.start_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
+                    
+                    # Write header to main log
+                    header = f"""╔══════════════════════════════════════════════════════════════════════════════
+║ Host:     {read.hostname}
+║ Start:    {formatted_time}
+║ Command:  {read.command}
+║ Output:   {read.current_logfile}"""
                     with open(log_file, 'a') as f:
-                        f.write(line[20:] + '\n')  # Skip "##### PRODLOG HEADER " or "##### PRODLOG FOOTER "
+                        f.write(header + '\n')
+                        f.flush()
+                    
+                    # Write header to command log file
+                    with open(read.current_logfile, 'w') as f:
+                        f.write(f"Host:     {read.hostname}\n")
+                        f.write(f"Start:    {formatted_time}\n")
+                        f.write(f"Command:  {read.command}\n")
+                        f.write("="*80 + "\n\n")
+                        f.flush()
                 continue
             
             if "##### PRODLOG START CAPTURE #####" in line:
                 read.capturing = True
+                read.capture_metadata = 2  # Expect 2 lines: hostname, command
                 continue
             
             if "##### PRODLOG STOP CAPTURE #####" in line:
                 read.capturing = False
+                # Calculate duration and write footer
+                end_time = datetime.datetime.now(datetime.timezone.utc)
+                duration_ms = (end_time - read.start_time).total_seconds() * 1000
+                
+                # Format end timestamp nicely
+                formatted_end = end_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
+                
+                # Write footer to main log
+                footer = f"""║ End:      {formatted_end}
+║ Duration: {duration_ms:.2f}ms
+╚══════════════════════════════════════════════════════════════════════════════
+
+"""
+                with open(log_file, 'a') as f:
+                    f.write(footer)
+                    f.flush()
+                
+                # Write footer to command log file
+                with open(read.current_logfile, 'a') as f:
+                    f.write("\n" + "="*80 + "\n")
+                    f.write(f"End:      {formatted_end}\n")
+                    f.write(f"Duration: {duration_ms:.2f}ms\n")
+                    f.flush()
                 continue
             
-            # Output regular lines to terminal and log
+            # Output regular lines to terminal and command log file
             modified_data += line + '\n'
             
-            # Only write regular lines to log file if we're capturing
+            # Only write to log file if we're capturing
             if read.capturing:
-                with open(log_file, 'a') as f:
+                with open(read.current_logfile, 'a') as f:
                     f.write(line + '\n')
                     f.flush()
         
         # Handle any remaining partial line (likely a prompt)
         if read.buffer:
-            # Always clear line and rewrite from start
-            modified_data += '\033[2K\r' + read.buffer
+            if decoded.endswith('\n'):
+                # Complete line - clear any existing content first
+                modified_data += '\033[2K\r' + read.buffer + '\n'
+            else:
+                # Partial line/prompt - clear and rewrite
+                modified_data += '\033[2K\r' + read.buffer
         
-        # Return the modified data for terminal display
         return modified_data.encode()
     
     # Initialize capturing state
