@@ -144,6 +144,8 @@ def record_shell():
             read.alternate_screen = False
         if not hasattr(read, 'current_logfile'):
             read.current_logfile = None
+        if not hasattr(read, 'all_hosts_logfile'):
+            read.all_hosts_logfile = None
         
         # Read raw data
         data = os.read(fd, 1024)
@@ -195,10 +197,15 @@ def record_shell():
                     output_dir = Path.home() / ".prodlog" / "output" / read.hostname
                     output_dir.mkdir(parents=True, exist_ok=True)
                     
+                    # Create all-hosts directory
+                    all_hosts_dir = Path.home() / ".prodlog" / "output" / "all-hosts"
+                    all_hosts_dir.mkdir(parents=True, exist_ok=True)
+                    
                     # Get first word of command for filename
                     first_word = read.command.split()[0]
                     timestamp = read.start_time.strftime('%Y%m%d_%H%M%S')
                     read.current_logfile = output_dir / f"{timestamp}-{first_word}.log"
+                    read.all_hosts_logfile = all_hosts_dir / f"{timestamp}-{read.hostname}-{first_word}.log"
                     
                     # Format timestamp nicely
                     formatted_time = read.start_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
@@ -213,13 +220,14 @@ def record_shell():
                         f.write(header + '\n')
                         f.flush()
                     
-                    # Write header to command log file
-                    with open(read.current_logfile, 'w') as f:
-                        f.write(f"Host:     {read.hostname}\n")
-                        f.write(f"Start:    {formatted_time}\n")
-                        f.write(f"Command:  {read.command}\n")
-                        f.write("="*80 + "\n\n")
-                        f.flush()
+                    # Write header to both log files
+                    for logfile in [read.current_logfile, read.all_hosts_logfile]:
+                        with open(logfile, 'w') as f:
+                            f.write(f"Host:     {read.hostname}\n")
+                            f.write(f"Start:    {formatted_time}\n")
+                            f.write(f"Command:  {read.command}\n")
+                            f.write("="*80 + "\n\n")
+                            f.flush()
                 continue
             
             if "##### PRODLOG START CAPTURE #####" in line:
@@ -246,22 +254,24 @@ def record_shell():
                     f.write(footer)
                     f.flush()
                 
-                # Write footer to command log file
-                with open(read.current_logfile, 'a') as f:
-                    f.write("\n" + "="*80 + "\n")
-                    f.write(f"End:      {formatted_end}\n")
-                    f.write(f"Duration: {duration_ms:.2f}ms\n")
-                    f.flush()
+                # Write footer to both log files
+                for logfile in [read.current_logfile, read.all_hosts_logfile]:
+                    with open(logfile, 'a') as f:
+                        f.write("\n" + "="*80 + "\n")
+                        f.write(f"End:      {formatted_end}\n")
+                        f.write(f"Duration: {duration_ms:.2f}ms\n")
+                        f.flush()
                 continue
             
-            # Output regular lines to terminal and command log file
+            # Output regular lines to terminal and both log files
             modified_data += line + '\n'
             
-            # Only write to log file if we're capturing
+            # Only write to log files if we're capturing
             if read.capturing:
-                with open(read.current_logfile, 'a') as f:
-                    f.write(line + '\n')
-                    f.flush()
+                for logfile in [read.current_logfile, read.all_hosts_logfile]:
+                    with open(logfile, 'a') as f:
+                        f.write(line + '\n')
+                        f.flush()
         
         # Handle any remaining partial line (likely a prompt)
         if read.buffer:
