@@ -195,18 +195,21 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                     # Get first word of command for filename
                     first_word = read.command.split()[0]
                     timestamp = read.start_time.strftime('%Y%m%d_%H%M%S')
-                    read.current_logfile = output_dir / f"{timestamp}-{first_word}.log"
-                    read.all_hosts_logfile = all_hosts_dir / f"{timestamp}-{read.hostname}-{first_word}.log"
+                    read.current_logfile = output_dir / f"{timestamp}-{first_word}.md"
+                    read.all_hosts_logfile = all_hosts_dir / f"{timestamp}-{read.hostname}-{first_word}.md"
                     
                     # Format timestamp nicely
                     formatted_time = read.start_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
                     
+                    # Format title timestamp (HH:MM only)
+                    title_time = read.start_time.strftime('%Y-%m-%d %H:%M')
+                    
                     # Write header to main log
-                    header = f"""╔══════════════════════════════════════════════════════════════════════════════
-║ Host:     {read.hostname}
-║ Start:    {formatted_time}
-║ Command:  {read.command}
-║ Output:   {read.current_logfile}"""
+                    header = f"""## {title_time} on {read.hostname}: {first_word}
+- **Host:**     {read.hostname}
+- **Start:**    {formatted_time}
+- **Command:**  {read.command}
+- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]"""
                     with open(log_file, 'a') as f:
                         f.write(header + '\n')
                         f.flush()
@@ -217,7 +220,8 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                             f.write(f"Host:     {read.hostname}\n")
                             f.write(f"Start:    {formatted_time}\n")
                             f.write(f"Command:  {read.command}\n")
-                            f.write("="*80 + "\n\n")
+                            f.write("Output:\n")
+                            f.write("```\n\n")
                             f.flush()
                 continue
             
@@ -236,9 +240,10 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                 formatted_end = end_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
                 
                 # Write footer to main log
-                footer = f"""║ End:      {formatted_end}
-║ Duration: {duration_ms:.2f}ms
-╚══════════════════════════════════════════════════════════════════════════════
+                footer = f"""- **End:**      {formatted_end}
+- **Duration:** {duration_ms:.2f}ms
+
+---
 
 """
                 with open(log_file, 'a') as f:
@@ -248,7 +253,7 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                 # Write footer to both log files
                 for logfile in [read.current_logfile, read.all_hosts_logfile]:
                     with open(logfile, 'a') as f:
-                        f.write("\n" + "="*80 + "\n")
+                        f.write("\n```\n")
                         f.write(f"End:      {formatted_end}\n")
                         f.write(f"Duration: {duration_ms:.2f}ms\n")
                         f.flush()
