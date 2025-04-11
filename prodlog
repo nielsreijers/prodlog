@@ -9,37 +9,27 @@ import socket
 from pathlib import Path
 import select
 import subprocess
-
-def show_usage():
-    print("Usage: prodlog record")
-    print("       Starts a new shell session and records all output to ~/.prodlog/output.log")
-    print("Usage: prodlog run <command> [args...]")
-    print("       Runs the specified command and records its output")
-    print("\n##### PRODLOG IS CURRENTLY INACTIVE")
-    sys.exit(1)
+import argparse
 
 def main():
-    try:
-        if len(sys.argv) < 2:
-            show_usage()
-
-        if sys.argv[1] == "record":
-            if len(sys.argv) != 2:
-                show_usage()
-            print("Starting record_shell...", file=sys.stderr)
-            record_shell()
-        elif sys.argv[1] == "run":
-            if len(sys.argv) < 3:
-                show_usage()
-            print("Starting run_command...", file=sys.stderr)
-            run_command(sys.argv[2:])
-        else:
-            show_usage()
-    except Exception as e:
-        print(f"Error in main: {str(e)}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+    parser = argparse.ArgumentParser(description='Record shell output')
+    parser.add_argument('command', nargs='?', choices=['run', 'record'], help='Command to execute')
+    parser.add_argument('--dir', '-d', default=str(Path.home() / '.prodlog'),
+                       help='Base directory for logs (default: ~/.prodlog)',
+                       type=lambda p: str(Path(p).expanduser().resolve()))
+    parser.add_argument('args', nargs=argparse.REMAINDER, help='Command line arguments')
+    
+    args = parser.parse_args()
+    
+    if args.command is None:
+        parser.print_help()
+        print("\n##### PRODLOG IS CURRENTLY INACTIVE #####")
         sys.exit(1)
+    elif args.command == 'run':
+        run_command(args.args)
+    elif args.command == 'record':
+        print(f"Prodlog will write to: {args.dir}")
+        record_shell(base_dir=Path(args.dir))
 
 def run_command(command):
     try:
@@ -111,10 +101,11 @@ def run_command(command):
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
-def record_shell():
-    # Configure log file location
-    log_file = Path.home() / ".prodlog" / "output.log"
-    log_file.parent.mkdir(exist_ok=True)
+def record_shell(base_dir=Path.home() / '.prodlog'):
+    # Create log directory if it doesn't exist
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    log_file = base_dir / 'prodlog.md'
 
     # Add this function to handle window size changes
     def set_window_size(fd):
@@ -194,11 +185,11 @@ def record_shell():
                     read.start_time = datetime.datetime.now(datetime.timezone.utc)
                     
                     # Create hostname directory and get log filename
-                    output_dir = Path.home() / ".prodlog" / "output" / read.hostname
+                    output_dir = base_dir / "output" / read.hostname
                     output_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Create all-hosts directory
-                    all_hosts_dir = Path.home() / ".prodlog" / "output" / "all-hosts"
+                    all_hosts_dir = base_dir / "output" / "all-hosts"
                     all_hosts_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Get first word of command for filename
