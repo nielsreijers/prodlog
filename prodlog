@@ -204,16 +204,6 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                     # Format title timestamp (HH:MM only)
                     title_time = read.start_time.strftime('%Y-%m-%d %H:%M')
                     
-                    # Write header to main log
-                    header = f"""## {title_time} on {read.hostname}: {first_word}
-- **Host:**     {read.hostname}
-- **Start:**    {formatted_time}
-- **Command:**  {read.command}
-- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]"""
-                    with open(main_log_file, 'a') as f:
-                        f.write(header + '\n')
-                        f.flush()
-                    
                     # Write header to both log files
                     for logfile in [read.current_logfile, read.all_hosts_logfile]:
                         with open(logfile, 'w') as f:
