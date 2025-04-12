@@ -185,16 +185,17 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                     read.start_time = datetime.datetime.now(datetime.timezone.utc)
                     
                     # Create hostname directory and get log filename
-                    output_dir = base_dir / "output" / read.hostname
+                    output_dir = base_dir / "prodlog_output" / read.hostname
                     output_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Create all-hosts directory
-                    all_hosts_dir = base_dir / "output" / "all-hosts"
+                    all_hosts_dir = base_dir / "prodlog_output" / "all-hosts"
                     all_hosts_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Get first word of command for filename
                     first_word = read.command.split()[0]
                     timestamp = read.start_time.strftime('%Y%m%d_%H%M%S')
+                    
                     read.current_logfile = output_dir / f"{timestamp}-{first_word}.md"
                     read.all_hosts_logfile = all_hosts_dir / f"{timestamp}-{read.hostname}-{first_word}.md"
                     
@@ -242,7 +243,7 @@ Command:  {read.command}
 End:      {formatted_end}
 Duration: {duration_ms:.2f}ms
 ```
-Output:   [[output/{read.hostname}/{timestamp}-{first_word}]]
+Output:   [[prodlog_output/{read.hostname}/{timestamp}-{first_word}]]
 
 ---
 
