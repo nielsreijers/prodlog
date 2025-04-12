@@ -248,20 +248,16 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
 - **Host:**     {read.hostname}
 - **Start:**    {formatted_time}
 - **Command:**  {read.command}
-- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]"""
-                with open(main_log_file, 'a') as f:
-                    f.write(entry + '\n')
-                    f.flush()
-                
-                # Write footer to main log
-                footer = f"""- **End:**      {formatted_end}
+- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]
+
+- **End:**      {formatted_end}
 - **Duration:** {duration_ms:.2f}ms
 
 ---
 
 """
                 with open(main_log_file, 'a') as f:
-                    f.write(footer)
+                    f.write(entry)
                     f.flush()
                 
                 # Write footer to both log files
