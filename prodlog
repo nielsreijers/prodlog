@@ -248,10 +248,9 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
 - **Host:**     {read.hostname}
 - **Start:**    {formatted_time}
 - **Command:**  {read.command}
-- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]
-
 - **End:**      {formatted_end}
 - **Duration:** {duration_ms:.2f}ms
+- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]
 
 ---
 
