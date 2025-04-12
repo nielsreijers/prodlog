@@ -105,7 +105,7 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
     # Create log directory if it doesn't exist
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
-    log_file = base_dir / 'prodlog.md'
+    main_log_file = base_dir / 'prodlog.md'
 
     # Add this function to handle window size changes
     def set_window_size(fd):
@@ -210,7 +210,7 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
 - **Start:**    {formatted_time}
 - **Command:**  {read.command}
 - **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]"""
-                    with open(log_file, 'a') as f:
+                    with open(main_log_file, 'a') as f:
                         f.write(header + '\n')
                         f.flush()
                     
@@ -246,7 +246,7 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
 ---
 
 """
-                with open(log_file, 'a') as f:
+                with open(main_log_file, 'a') as f:
                     f.write(footer)
                     f.flush()
                 
@@ -330,7 +330,7 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
 
     except Exception as e:
         if read.capturing:
-            with open(log_file, 'a') as f:
+            with open(main_log_file, 'a') as f:
                 f.write(f"\nError: {str(e)}\n")
     finally:
         # Restore original terminal settings
