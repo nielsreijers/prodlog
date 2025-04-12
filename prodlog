@@ -245,12 +245,14 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
                 
                 # Write complete entry to main log
                 entry = f"""## {title_time} on {read.hostname}: {first_word}
-- **Host:**     {read.hostname}
-- **Start:**    {formatted_time}
-- **Command:**  {read.command}
-- **End:**      {formatted_end}
-- **Duration:** {duration_ms:.2f}ms
-- **Output:**   [[output/{read.hostname}/{timestamp}-{first_word}]]
+```
+Host:     {read.hostname}
+Start:    {formatted_time}
+Command:  {read.command}
+End:      {formatted_end}
+Duration: {duration_ms:.2f}ms
+```
+Output:   [[output/{read.hostname}/{timestamp}-{first_word}]]
 
 ---
 
