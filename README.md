@@ -53,19 +53,29 @@ options:
 
 ## Web Interface
 
-Prodlog includes a web interface to browse and search your command history. To start it:
+The web interface allows you to browse and search through your recorded sessions.
+
+### Installation
+
+First, install the required Python packages:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Usage
+
+Start the web interface:
 
 ```bash
 prodlog_ui
 ```
 
-This will start a local web server at http://localhost:5000. Open this URL in your browser to access the interface.
-
-The web interface allows you to:
-- View all recorded commands in chronological order
-- Filter commands by date, hostname, or command text
-- View the full output of any recorded command
-- Navigate between different hosts and sessions
+This will start a web server on http://localhost:5000 where you can:
+- Browse all recorded sessions
+- Filter by date, host, and command
+- Search within command output
+- View formatted output with original colors and formatting
 
 You can also specify a different log directory:
 
