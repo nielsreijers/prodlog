@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+from flask import Flask, render_template, request
+from pathlib import Path
+import json
+from datetime import datetime
+import os
+import argparse
+
+app = Flask(__name__)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Prodlog Web UI')
+    parser.add_argument('--dir', '-d', default=str(Path.home() / '.prodlog'),
+                       help='Base directory for logs (default: ~/.prodlog)',
+                       type=lambda p: str(Path(p).expanduser().resolve()))
+    return parser.parse_args()
+
+# Store base_dir as a global variable that will be set in main()
+base_dir = None
+
+# Create templates directory if it doesn't exist
+templates_dir = Path(__file__).parent / 'templates'
+templates_dir.mkdir(exist_ok=True)
+
+# Create a basic HTML template
+with open(templates_dir / 'index.html', 'w') as f:
+    f.write('''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prodlog Viewer</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .filters { margin-bottom: 20px; }
+        .entry { 
+            border: 1px solid #ddd; 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 4px;
+        }
+        .timestamp { color: #666; }
+        .command { font-family: monospace; }
+        input, select { 
+            padding: 5px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .output-link {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        .output-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Prodlog Viewer</h1>
+    <div class="filters">
+        <form method="get">
+            <input type="date" name="date" value="{{ request.args.get('date', '') }}">
+            <input type="text" name="host" placeholder="Hostname" value="{{ request.args.get('host', '') }}">
+            <input type="text" name="command" placeholder="Command" value="{{ request.args.get('command', '') }}">
+            <button type="submit">Filter</button>
+            <button type="submit" onclick="document.querySelector('form').reset(); return true;">Clear</button>
+        </form>
+    </div>
+    {% for entry in entries %}
+    <div class="entry">
+        <div class="timestamp">{{ entry.start_time }}</div>
+        <div><strong>Host:</strong> {{ entry.host }}</div>
+        <div><strong>Command:</strong> <span class="command">{{ entry.command }}</span></div>
+        <div><strong>Duration:</strong> {{ entry.duration_ms }}ms</div>
+        <div>
+            <strong>Output:</strong> 
+            <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html>
+    '''.strip())
+
+def load_json_data():
+    json_file = Path(base_dir) / 'prodlog.json'
+    if not json_file.exists():
+        return {"entries": []}
+    with open(json_file) as f:
+        return json.load(f)
+
+@app.route('/')
+def index():
+    data = load_json_data()
+    entries = data['entries']
+
+    # Apply filters
+    date_filter = request.args.get('date')
+    host_filter = request.args.get('host')
+    command_filter = request.args.get('command')
+
+    if date_filter:
+        entries = [
+            e for e in entries 
+            if e['timestamp'].startswith(date_filter)
+        ]
+    if host_filter:
+        entries = [
+            e for e in entries 
+            if host_filter.lower() in e['host'].lower()
+        ]
+    if command_filter:
+        entries = [
+            e for e in entries 
+            if command_filter.lower() in e['command'].lower()
+        ]
+
+    # Sort entries by timestamp, newest first
+    entries.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    return render_template('index.html', entries=entries)
+
+@app.route('/output/<path:filepath>')
+def view_output(filepath):
+    file_path = Path(base_dir) / filepath
+
+    if not file_path.exists() or not str(file_path).startswith(str(base_dir)):
+        return "File not found", 404
+
+    with open(file_path) as f:
+        content = f.read()
+
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Output View</title>
+        <style>
+            body {{ font-family: monospace; margin: 20px; }}
+            pre {{ white-space: pre-wrap; }}
+            .back-link {{ margin-bottom: 20px; }}
+        </style>
+    </head>
+    <body>
+        <div class="back-link">
+            <a href="/">← Back to list</a>
+        </div>
+        <pre>{content}</pre>
+    </body>
+    </html>
+    '''
+
+if __name__ == '__main__':
+    args = parse_args()
+    base_dir = args.dir
+    print(f"Using prodlog directory: {base_dir}")
+    app.run(debug=True) 

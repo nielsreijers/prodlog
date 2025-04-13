@@ -11,6 +11,7 @@ import select
 import subprocess
 import argparse
 import time
+import json
 
 def main():
     parser = argparse.ArgumentParser(description='Record shell output')
@@ -115,6 +116,12 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
     main_log_file = base_dir / 'prodlog.md'
+    json_log_file = base_dir / 'prodlog.json'
+
+    # Initialize JSON file if it doesn't exist
+    if not json_log_file.exists():
+        with open(json_log_file, 'w') as f:
+            json.dump({"entries": []}, f)
 
     # Add this function to handle window size changes
     def set_window_size(fd):
@@ -260,6 +267,25 @@ Output:   [[prodlog_output/{read.hostname}/{timestamp}-{first_word}]]
                 with open(main_log_file, 'a') as f:
                     f.write(entry)
                     f.flush()
+
+                # Create JSON entry
+                json_entry = {
+                    "timestamp": read.start_time.isoformat(),
+                    "host": read.hostname,
+                    "command": read.command,
+                    "start_time": formatted_time,
+                    "end_time": formatted_end,
+                    "duration_ms": round(duration_ms, 2),
+                    "output_file": f"prodlog_output/{read.hostname}/{timestamp}-{first_word}.md",
+                    "all_hosts_file": f"prodlog_output/all-hosts/{timestamp}-{read.hostname}-{first_word}.md"
+                }
+
+                # Read existing JSON, append new entry, and write back
+                with open(json_log_file, 'r') as f:
+                    json_data = json.load(f)
+                json_data["entries"].append(json_entry)
+                with open(json_log_file, 'w') as f:
+                    json.dump(json_data, f, indent=2)
                 
                 # Write footer to both log files
                 for logfile in [read.current_logfile, read.all_hosts_logfile]:
