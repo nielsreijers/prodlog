@@ -1,3 +1,9 @@
+# Prodlog
+
+> **Note**: This entire project, including this README, was generated through conversations with an AI (Claude). The human user provided requirements and feedback, but did not write any code or documentation directly. The AI wrote every byte of code, documentation, and comments.
+
+Prodlog is a command logging tool that records your terminal sessions, including commands, output, timing, and host information. It includes a web interface for browsing and searching through your recorded sessions.
+
 ## Quick Install
 
 ```bash
@@ -76,6 +82,7 @@ This will start a web server on http://localhost:5000 where you can:
 - Filter by date, host, and command
 - Search within command output
 - View formatted output with original colors and formatting
+- Toggle between table and list views
 
 You can also specify a different log directory:
 
