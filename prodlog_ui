@@ -82,10 +82,66 @@ with open(templates_dir / 'index.html', 'w') as f:
         .output-preview span {
             font-family: monospace;
         }
+        .layout-toggle {
+            float: right;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f5f5f5;
+        }
+        .table-view {
+            display: none;
+        }
+        .list-view {
+            display: block;
+        }
+        body.table-layout .table-view {
+            display: block;
+        }
+        body.table-layout .list-view {
+            display: none;
+        }
     </style>
+    <script>
+        function toggleLayout() {
+            const body = document.body;
+            const button = document.getElementById('layoutToggle');
+            if (body.classList.contains('table-layout')) {
+                body.classList.remove('table-layout');
+                button.textContent = 'Switch to Table View';
+                localStorage.setItem('layout', 'list');
+            } else {
+                body.classList.add('table-layout');
+                button.textContent = 'Switch to List View';
+                localStorage.setItem('layout', 'table');
+            }
+        }
+        
+        window.onload = function() {
+            const savedLayout = localStorage.getItem('layout') || 'table';
+            const button = document.getElementById('layoutToggle');
+            if (savedLayout === 'table') {
+                document.body.classList.add('table-layout');
+                button.textContent = 'Switch to List View';
+            }
+        }
+    </script>
 </head>
-<body>
+<body class="table-layout">
     <h1>Prodlog Viewer</h1>
+    <div class="layout-toggle">
+        <button id="layoutToggle" onclick="toggleLayout()">Switch to Table View</button>
+    </div>
     <div class="filters">
         <form method="get">
             <input type="date" name="date" value="{{ request.args.get('date', '') }}">
@@ -96,21 +152,54 @@ with open(templates_dir / 'index.html', 'w') as f:
             <button type="button" onclick="window.location.href='/'">Clear</button>
         </form>
     </div>
-    {% for entry in entries %}
-    <div class="entry">
-        <div class="timestamp">{{ entry.start_time }}</div>
-        <div><strong>Host:</strong> {{ entry.host }}</div>
-        <div><strong>Command:</strong> <span class="command">{{ entry.command }}</span></div>
-        <div><strong>Duration:</strong> {{ entry.duration_ms }}ms</div>
-        <div>
-            <strong>Output:</strong> 
-            <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
+    
+    <div class="list-view">
+        {% for entry in entries %}
+        <div class="entry">
+            <div class="timestamp">{{ entry.start_time }}</div>
+            <div><strong>Host:</strong> {{ entry.host }}</div>
+            <div><strong>Command:</strong> <span class="command">{{ entry.command }}</span></div>
+            <div><strong>Duration:</strong> {{ entry.duration_ms }}ms</div>
+            <div>
+                <strong>Output:</strong> 
+                <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
+            </div>
+            {% if entry.output_preview %}
+            <div class="output-preview">{{ entry.output_preview | safe }}</div>
+            {% endif %}
         </div>
-        {% if entry.output_preview %}
-        <div class="output-preview">{{ entry.output_preview | safe }}</div>
-        {% endif %}
+        {% endfor %}
     </div>
-    {% endfor %}
+
+    <div class="table-view">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Host</th>
+                    <th>Command</th>
+                    <th>Duration</th>
+                    <th>Output</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>{{ entry.start_time }}</td>
+                    <td>{{ entry.host }}</td>
+                    <td class="command">{{ entry.command }}</td>
+                    <td>{{ entry.duration_ms }}ms</td>
+                    <td>
+                        <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
+                        {% if entry.output_preview %}
+                        <div class="output-preview">{{ entry.output_preview | safe }}</div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </body>
 </html>
     '''.strip())
