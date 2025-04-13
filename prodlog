@@ -10,6 +10,7 @@ from pathlib import Path
 import select
 import subprocess
 import argparse
+import time
 
 def main():
     parser = argparse.ArgumentParser(description='Record shell output')
@@ -36,8 +37,19 @@ def run_command(command):
         hostname = socket.gethostname()
         cmd_str = ' '.join(command)
 
-        # Print warning that will be hidden when running under record
-        print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
+        # Check if prodlog is running
+        print("##### PROD LOG, ARE YOU RUNNING? #####", flush=True)
+        
+        # Wait up to 1 second for response
+        rlist, _, _ = select.select([sys.stdin], [], [], 1.0)
+        if not rlist:
+            print("Error: prodlog is not running. Please start it first with 'prodlog record'")
+            sys.exit(1)
+        
+        response = sys.stdin.readline().strip()
+        if response != "##### OUTPUT RECORDED BY PRODLOG #####":
+            print("Error: unexpected response from prodlog")
+            sys.exit(1)
 
         # Print start marker with metadata
         print("\n##### PRODLOG START CAPTURE #####")
@@ -92,9 +104,6 @@ def run_command(command):
         # Print stop marker
         print("##### PRODLOG STOP CAPTURE #####")
 
-        # Print warning that will be hidden when running under record
-        print("##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####")
-    
     except Exception as e:
         print(f"Error in run_command: {str(e)}", file=sys.stderr)
         import traceback
@@ -165,11 +174,11 @@ def record_shell(base_dir=Path.home() / '.prodlog'):
         
         # Process all complete lines
         for line in lines[:-1]:
-            # Replace warning with "being recorded" message
-            if "##### WARNING PRODLOG RECORD IS NOT RUNNING SO THIS IS NOT BEING RECORDED #####" in line:
-                modified_data += "##### OUTPUT RECORDED BY PRODLOG #####\n"
+            # Check for prodlog running query
+            if "##### PROD LOG, ARE YOU RUNNING? #####" in line:
+                os.write(fd, b"##### OUTPUT RECORDED BY PRODLOG #####\n")  # Write directly to subprocess
+                # Don't add to modified_data since it will be received and displayed by run_command
                 continue
-            
             # Replace inactive message with active message
             if "##### PRODLOG IS CURRENTLY INACTIVE" in line:
                 modified_data += "Prodlog is currently ACTIVE\n"
@@ -305,9 +314,14 @@ Output:   [[prodlog_output/{read.hostname}/{timestamp}-{first_word}]]
             
             while True:
                 try:
+                    # Check if child process has terminated
+                    wpid, status = os.waitpid(pid, os.WNOHANG)
+                    if wpid == pid:  # Child has terminated
+                        break
+
                     # Watch both original input and child's output
                     rfds = [sys.stdin, fd]
-                    reads, _, _ = select.select(rfds, [], [])
+                    reads, _, _ = select.select(rfds, [], [], 0.1)  # Add timeout
 
                     for read_fd in reads:
                         if read_fd == sys.stdin:
@@ -315,28 +329,40 @@ Output:   [[prodlog_output/{read.hostname}/{timestamp}-{first_word}]]
                             data = os.read(sys.stdin.fileno(), 1024)
                             if data == b'\x1c':  # SIGWINCH - window size changed
                                 set_window_size(fd)
-                            os.write(fd, data)
+                            try:
+                                os.write(fd, data)
+                            except OSError:
+                                # Shell probably died
+                                return  # Exit if we can't write to shell
                         else:
                             # Forward child's output to stdout
                             try:
                                 data = read(fd)
                                 if not data:
-                                    raise EOFError
+                                    continue  # Skip empty reads instead of raising EOFError
                                 os.write(sys.stdout.fileno(), data)
-                            except EOFError:
-                                # Child process ended
-                                raise
+                            except OSError:
+                                # Only exit if there's a real error reading from shell
+                                return
 
                 except (EOFError, OSError):
+                    # Only break the loop if there's a persistent error
                     break
 
     except Exception as e:
+        # Restore terminal settings before printing error
+        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
+        print(f"\nError in record_shell: {str(e)}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         if read.capturing:
             with open(main_log_file, 'a') as f:
                 f.write(f"\nError: {str(e)}\n")
+        sys.exit(1)
     finally:
         # Restore original terminal settings
         termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
+        print("\nprodlog record exiting...")
 
 if __name__ == "__main__":
     main()
