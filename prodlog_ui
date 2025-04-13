@@ -62,6 +62,20 @@ with open(templates_dir / 'index.html', 'w') as f:
         .output-link:hover {
             text-decoration: underline;
         }
+        .match-highlight {
+            background-color: #fff3cd;
+            padding: 2px;
+        }
+        .output-preview {
+            font-family: monospace;
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            max-height: 100px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -71,6 +85,7 @@ with open(templates_dir / 'index.html', 'w') as f:
             <input type="date" name="date" value="{{ request.args.get('date', '') }}">
             <input type="text" name="host" placeholder="Hostname" value="{{ request.args.get('host', '') }}">
             <input type="text" name="command" placeholder="Command" value="{{ request.args.get('command', '') }}">
+            <input type="text" name="output" placeholder="Search in output" value="{{ request.args.get('output', '') }}">
             <button type="submit">Filter</button>
             <button type="submit" onclick="document.querySelector('form').reset(); return true;">Clear</button>
         </form>
@@ -85,6 +100,9 @@ with open(templates_dir / 'index.html', 'w') as f:
             <strong>Output:</strong> 
             <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
         </div>
+        {% if entry.output_preview %}
+        <div class="output-preview">{{ entry.output_preview | safe }}</div>
+        {% endif %}
     </div>
     {% endfor %}
 </body>
@@ -98,6 +116,20 @@ def load_json_data():
     with open(json_file) as f:
         return json.load(f)
 
+def get_output_content(filepath):
+    try:
+        with open(Path(base_dir) / filepath) as f:
+            return f.read()
+    except:
+        return ""
+
+def highlight_matches(text, search_term):
+    if not search_term:
+        return text
+    import re
+    pattern = re.escape(search_term)
+    return re.sub(f'({pattern})', r'<span class="match-highlight">\1</span>', text, flags=re.IGNORECASE)
+
 @app.route('/')
 def index():
     data = load_json_data()
@@ -107,6 +139,7 @@ def index():
     date_filter = request.args.get('date')
     host_filter = request.args.get('host')
     command_filter = request.args.get('command')
+    output_filter = request.args.get('output')
 
     if date_filter:
         entries = [
@@ -123,6 +156,33 @@ def index():
             e for e in entries 
             if command_filter.lower() in e['command'].lower()
         ]
+    
+    # Filter and add previews for output matches
+    if output_filter:
+        filtered_entries = []
+        for entry in entries:
+            output_content = get_output_content(entry['output_file'])
+            if output_filter.lower() in output_content.lower():
+                # Find the context around the match
+                idx = output_content.lower().find(output_filter.lower())
+                start = max(0, idx - 50)
+                end = min(len(output_content), idx + len(output_filter) + 50)
+                
+                # Get the full lines containing the match
+                while start > 0 and output_content[start] != '\n':
+                    start -= 1
+                while end < len(output_content) and output_content[end] != '\n':
+                    end += 1
+                
+                preview = output_content[start:end].strip()
+                if start > 0:
+                    preview = "..." + preview
+                if end < len(output_content):
+                    preview = preview + "..."
+                
+                entry['output_preview'] = highlight_matches(preview, output_filter)
+                filtered_entries.append(entry)
+        entries = filtered_entries
 
     # Sort entries by timestamp, newest first
     entries.sort(key=lambda x: x['timestamp'], reverse=True)
@@ -139,6 +199,11 @@ def view_output(filepath):
     with open(file_path) as f:
         content = f.read()
 
+    # Highlight search term if provided
+    output_filter = request.args.get('output')
+    if output_filter:
+        content = highlight_matches(content, output_filter)
+
     return f'''
     <!DOCTYPE html>
     <html>
@@ -148,6 +213,7 @@ def view_output(filepath):
             body {{ font-family: monospace; margin: 20px; }}
             pre {{ white-space: pre-wrap; }}
             .back-link {{ margin-bottom: 20px; }}
+            .match-highlight {{ background-color: #fff3cd; padding: 2px; }}
         </style>
     </head>
     <body>
