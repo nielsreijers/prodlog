@@ -5,6 +5,8 @@ import json
 from datetime import datetime
 import os
 import argparse
+import re
+import pyte
 
 app = Flask(__name__)
 
@@ -70,11 +72,15 @@ with open(templates_dir / 'index.html', 'w') as f:
             font-family: monospace;
             margin-top: 10px;
             padding: 10px;
-            background-color: #f8f9fa;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
             border-radius: 4px;
             white-space: pre-wrap;
             max-height: 100px;
             overflow-y: auto;
+        }
+        .output-preview span {
+            font-family: monospace;
         }
     </style>
 </head>
@@ -87,7 +93,7 @@ with open(templates_dir / 'index.html', 'w') as f:
             <input type="text" name="command" placeholder="Command" value="{{ request.args.get('command', '') }}">
             <input type="text" name="output" placeholder="Search in output" value="{{ request.args.get('output', '') }}">
             <button type="submit">Filter</button>
-            <button type="submit" onclick="document.querySelector('form').reset(); return true;">Clear</button>
+            <button type="button" onclick="window.location.href='/'">Clear</button>
         </form>
     </div>
     {% for entry in entries %}
@@ -129,6 +135,75 @@ def highlight_matches(text, search_term):
     import re
     pattern = re.escape(search_term)
     return re.sub(f'({pattern})', r'<span class="match-highlight">\1</span>', text, flags=re.IGNORECASE)
+
+def ansi_to_html(text):
+    import pyte
+
+    # Use a wide screen width since we're rendering to HTML
+    # and a large number of lines to capture all output
+    screen = pyte.Screen(200, 1000)  # Wide screen, lots of lines
+    stream = pyte.Stream(screen)
+
+    # Feed the text to the terminal emulator
+    stream.feed(text)
+
+    # Now process colors and formatting
+    COLORS = {
+        'black': '#000000',
+        'red': '#cc0000',
+        'green': '#4e9a06',
+        'brown': '#c4a000',
+        'blue': '#3465a4',
+        'magenta': '#75507b',
+        'cyan': '#06989a',
+        'white': '#d3d7cf',
+        # Bright colors
+        'brightblack': '#555753',
+        'brightred': '#ef2929',
+        'brightgreen': '#8ae234',
+        'brightbrown': '#fce94f',
+        'brightblue': '#729fcf',
+        'brightmagenta': '#ad7fa8',
+        'brightcyan': '#34e2e2',
+        'brightwhite': '#eeeeec',
+    }
+
+    def char_to_html(char):
+        styles = []
+        
+        # Handle foreground color
+        if char.fg != 'default':
+            color = COLORS.get(char.fg, char.fg)
+            styles.append(f'color: {color}')
+            
+        # Handle background color
+        if char.bg != 'default':
+            color = COLORS.get(char.bg, char.bg)
+            styles.append(f'background-color: {color}')
+            
+        # Handle other attributes
+        if char.bold:
+            styles.append('font-weight: bold')
+        if char.italics:
+            styles.append('font-style: italic')
+        if char.underscore:
+            styles.append('text-decoration: underline')
+        if char.reverse:
+            styles.append('filter: invert(100%)')
+        
+        if styles:
+            return f'<span style="{"; ".join(styles)}">{char.data}</span>'
+        return char.data
+
+    # Get the resulting screen content with formatting
+    result = []
+    for line_no in range(len(screen.buffer)):
+        if line_no in screen.buffer:
+            line = ''.join(char_to_html(char) for char in screen.buffer[line_no].values())
+            result.append(line.rstrip())
+    result = '\n'.join(result)
+
+    return result
 
 @app.route('/')
 def index():
@@ -180,7 +255,12 @@ def index():
                 if end < len(output_content):
                     preview = preview + "..."
                 
-                entry['output_preview'] = highlight_matches(preview, output_filter)
+                # Convert the preview to HTML with proper formatting
+                preview_html = ansi_to_html(preview)
+                # Add highlight for the search term
+                preview_html = highlight_matches(preview_html, output_filter)
+                
+                entry['output_preview'] = preview_html
                 filtered_entries.append(entry)
         entries = filtered_entries
 
@@ -199,6 +279,9 @@ def view_output(filepath):
     with open(file_path) as f:
         content = f.read()
 
+    # Convert ANSI to HTML
+    content = ansi_to_html(content)
+
     # Highlight search term if provided
     output_filter = request.args.get('output')
     if output_filter:
@@ -210,10 +293,32 @@ def view_output(filepath):
     <head>
         <title>Output View</title>
         <style>
-            body {{ font-family: monospace; margin: 20px; }}
-            pre {{ white-space: pre-wrap; }}
-            .back-link {{ margin-bottom: 20px; }}
-            .match-highlight {{ background-color: #fff3cd; padding: 2px; }}
+            body {{ 
+                font-family: monospace; 
+                margin: 20px; 
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+            }}
+            pre {{ 
+                white-space: pre-wrap;
+                margin: 0;
+                padding: 10px;
+            }}
+            .back-link {{ 
+                margin-bottom: 20px; 
+            }}
+            .back-link a {{
+                color: #4CAF50;
+                text-decoration: none;
+            }}
+            .back-link a:hover {{
+                text-decoration: underline;
+            }}
+            .match-highlight {{ 
+                background-color: #fff3cd; 
+                color: #000;
+                padding: 2px; 
+            }}
         </style>
     </head>
     <body>
