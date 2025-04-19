@@ -13,12 +13,10 @@ use nix::unistd::execvp;
 use std::ffi::CString;
 
 fn run_child() -> Result<(), std::io::Error> {
-    let cmd = CString::new("/bin/bash").expect("CString::new failed");
-    let args = [
-        CString::new("bash").expect("CString::new failed"),
-    ];
-
-    // Replace the current process with bash
+    // let shell = std::env::var("SHELL").unwrap_or_else(|_| String::from("/bin/bash"));
+    let shell = String::from("/bin/bash");
+    let cmd = CString::new(shell).expect("CString::new failed");
+    let args : [CString; 0] = [];
     execvp(&cmd, &args)?;
     Ok(())
 }
