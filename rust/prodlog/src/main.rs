@@ -16,7 +16,7 @@ use termion::{color, style};
 use serde::{Serialize, Deserialize};
 use std::fs;
 
-const PRODLOG_CMD_PREFIX: &[u8] = "#### PRODLOG(dd0d3038-1d43-11f0-9761-022486cd4c38):".as_bytes();
+const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
 
 #[derive(Serialize, Deserialize)]
 struct ProdlogEntry {
