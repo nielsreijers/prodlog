@@ -25,7 +25,8 @@ struct CaptureState {
     host: String,
     cwd: String,
     cmd: String,
-    log: File,
+    log_by_host: File,
+    log_all_hosts: File,
     start_time: DateTime<Utc>,
 }
 
@@ -38,6 +39,7 @@ enum StdoutHandlerState {
     InitCaptureCmd(String, String, StreamState),
 }
 struct StdoutHandler {
+    prodlog_dir: String,
     stdout: RawTerminal<Stdout>,
     capturing: Option<CaptureState>,
     state: StdoutHandlerState,
@@ -45,7 +47,7 @@ struct StdoutHandler {
 
 impl StdoutHandler {
     fn new(stdout: RawTerminal<Stdout>) -> Self {
-        Self { stdout, capturing: None, state: StdoutHandlerState::Normal }
+        Self { prodlog_dir: "/home/niels/tmp/prodlog".to_string(), stdout, capturing: None, state: StdoutHandlerState::Normal }
     }
 
     fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
@@ -71,23 +73,76 @@ impl StdoutHandler {
         self.stdout.write(buf)?;
         self.stdout.flush()?;
         if let Some(capture) = &mut self.capturing {
-            capture.log.write_all(buf)?;
-            capture.log.flush()?;
+            capture.log_by_host.write_all(buf)?;
+            capture.log_by_host.flush()?;
+            capture.log_all_hosts.write_all(buf)?;
+            capture.log_all_hosts.flush()?;
         }
         Ok(())
     }
 
-    fn start_capturing(host: &str, cwd: &str, cmd: &str) -> CaptureState {
-        CaptureState {
+    fn start_capturing(prodlog_dir: &str, host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
+        std::fs::create_dir_all(format!("{}/{}", prodlog_dir, host))?;
+        std::fs::create_dir_all(format!("{}/all-hosts", prodlog_dir))?;
+        
+        let start_time = Utc::now();
+        let first_cmd = cmd.split_whitespace().next().unwrap();
+        let formatted_time = start_time.format("%Y%m%d_%H%M%S").to_string();
+        let log_by_host_filename = format!("{}-{}.log", formatted_time, first_cmd);
+        let log_all_hosts_filename = format!("{}-{}-{}.log", formatted_time, host, first_cmd);
+        let log_by_host = File::create(format!("{}/prodlog_output/{}/{}", prodlog_dir, host, log_by_host_filename))?;
+        let log_all_hosts = File::create(format!("{}/prodlog_output/all-hosts/{}", prodlog_dir, log_all_hosts_filename))?;
+        Ok(CaptureState {
             host: host.to_string(),
             cwd: cwd.to_string(),
             cmd: cmd.to_string(),
-            log: File::create(format!("/home/niels/tmp/prodlog/{}.log", Utc::now().format("%Y-%m-%d_%H-%M-%S"))).unwrap(),
-            start_time: Utc::now(),
-        }
+            log_by_host: log_by_host,
+            log_all_hosts: log_all_hosts,
+            start_time,
+        })
     }
 
-    fn stop_capturing(state: &CaptureState) {
+    fn stop_capturing(prodlog_dir: &str, state: &CaptureState) {
+        // let end_time = Utc::now();
+        // let duration = end_time.signed_duration_since(state.start_time);
+        // let duration_ms = duration.num_milliseconds() as f64;
+        //
+        // std::fs::create_dir_all(prodlog_dir).unwrap();
+        // let first_cmd = state.cmd.split_whitespace().next().unwrap_or("unknown");
+        // let formatted_start = state.start_time.format("%Y-%m-%d %H:%M");
+        // let formatted_start_detail = state.start_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
+        // let formatted_end = end_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
+        // let formatted_time = state.start_time.format("%Y%m%d_%H%M%S");
+        //
+        // let entry = format!(
+        //     "\n## {} on {}: {}\n\
+        //     ```\n\
+        //     Host:     {}\n\
+        //     Start:    {}\n\
+        //     Command:  {}\n\
+        //     End:      {}\n\
+        //     Duration: {:.2}ms\n\
+        //     ```\n\
+        //     Output:   [[prodlog_output/{}/{}-{}]]\n\n\
+        //     ---\n",
+        //     formatted_start, state.host, first_cmd,
+        //     state.host,
+        //     formatted_start_detail,
+        //     state.cmd,
+        //     formatted_end,
+        //     duration_ms,
+        //     state.host,
+        //     formatted_time,
+        //     first_cmd
+        // );
+        //
+        // std::fs::OpenOptions::new()
+        //     .create(true)
+        //     .append(true)
+        //     .open(format!("{}/prodlog.md", prodlog_dir))
+        //     .unwrap()
+        //     .write_all(entry.as_bytes())
+        //     .unwrap();
     }
 
     fn read_until_terminator(&self, buffer: &[u8], mut pos: usize, n: usize, state: &StreamState) -> StreamState {
@@ -175,7 +230,7 @@ impl StdoutHandler {
                                                                             capture.cmd,
                                                                             capture.host,
                                                                             capture.cwd))?;
-                                        Self::stop_capturing(capture);
+                                        Self::stop_capturing(&self.prodlog_dir, capture);
                                     } else {
                                         Self::write_prodlog_message(&mut self.stdout, "Warning: Tried to stop capture, but no capture was active")?
                                     }
@@ -228,7 +283,7 @@ impl StdoutHandler {
                         }
                         StreamState::Completed(cmd, new_pos) => {
                             Self::write_prodlog_message(&mut self.stdout, &format!("Starting capture of {} on {}:{}", cmd, host, cwd))?;
-                            self.capturing = Some(Self::start_capturing(host, cwd, &cmd));
+                            self.capturing = Some(Self::start_capturing(&self.prodlog_dir, host, cwd, &cmd));
                             self.state = StdoutHandlerState::Normal;
                             pos = new_pos;
                         }
