@@ -89,13 +89,13 @@ impl StdoutHandler {
     fn get_all_hosts_log_filename (start_time: DateTime<Utc>, host: &str, cmd: &str) -> String {
         let formatted_time = start_time.format("%Y%m%d_%H%M%S").to_string();
         let short_cmd = Self::get_short_command(cmd).replace(" ", "_");
-        format!("prodlog_output/all-hosts/{}-{}-{}.log", formatted_time, host, short_cmd)
+        format!("prodlog_output/all-hosts/{}-{}-{}.md", formatted_time, host, short_cmd)
     }
 
     fn get_by_host_log_filename (start_time: DateTime<Utc>, host: &str, cmd: &str) -> String {
         let formatted_time = start_time.format("%Y%m%d_%H%M%S").to_string();
         let short_cmd = Self::get_short_command(cmd).replace(" ", "_");
-        format!("prodlog_output/{}/{}-{}.log", host, formatted_time, short_cmd)
+        format!("prodlog_output/{}/{}-{}.md", host, formatted_time, short_cmd)
     }
 
     fn start_capturing(prodlog_dir: &str, host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
@@ -103,10 +103,22 @@ impl StdoutHandler {
         std::fs::create_dir_all(format!("{}/prodlog_output/all-hosts", prodlog_dir))?;
         
         let start_time = Utc::now();
+        let formatted_start_long = start_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
         let log_filename_by_host = Self::get_by_host_log_filename(start_time, host, cmd);
         let log_filename_all_hosts = Self::get_all_hosts_log_filename(start_time, host, cmd);
-        let log_by_host = File::create(format!("{}/{}", prodlog_dir, log_filename_by_host))?;
-        let log_all_hosts = File::create(format!("{}/{}", prodlog_dir, log_filename_all_hosts))?;
+        let mut log_by_host = File::create(format!("{}/{}", prodlog_dir, log_filename_by_host))?;
+        let mut log_all_hosts = File::create(format!("{}/{}", prodlog_dir, log_filename_all_hosts))?;
+
+        let header = format!(
+            "Host:     {host}\n\
+            Start:    {formatted_start_long}\n\
+            Command:  {cmd}\n\
+            Output:\n\
+            ```\n\
+            ");
+        log_by_host.write_all(header.as_bytes())?;
+        log_all_hosts.write_all(header.as_bytes())?;
+
         Ok(CaptureState {
             host: host.to_string(),
             cwd: cwd.to_string(),
@@ -118,7 +130,7 @@ impl StdoutHandler {
         })
     }
 
-    fn stop_capturing(prodlog_dir: &str, state: &CaptureState) -> Result<(), std::io::Error> {
+    fn stop_capturing(prodlog_dir: &str, state: &mut CaptureState) -> Result<(), std::io::Error> {
         std::fs::create_dir_all(prodlog_dir).unwrap();
 
         let end_time = Utc::now();
@@ -140,14 +152,25 @@ impl StdoutHandler {
             End:      {formatted_end_long}\n\
             Duration: {duration_ms}ms\n\
             ```\n\
-            Output:   [[{log_filename}]]\n\n\
-            ---\n");
+            Output:   [[{log_filename}]]\n\
+            ---\n\
+            ");
 
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(format!("{prodlog_dir}/prodlog.md"))?
             .write_all(entry.as_bytes())?;
+
+        let footer = format!(
+            "```\n\
+            End:      {formatted_end_long}\n\
+            Duration: {duration_ms}ms\n");
+        state.log_by_host.write_all(footer.as_bytes())?;
+        state.log_all_hosts.write_all(footer.as_bytes())?;
+        state.log_by_host.flush()?;
+        state.log_all_hosts.flush()?;
+
         Ok(())
     }
 
@@ -231,12 +254,12 @@ impl StdoutHandler {
                                     self.state = StdoutHandlerState::InitCaptureHost(StreamState::InProgress("".to_string()));
                                 }
                                 "STOP CAPTURE" => {
-                                    if let Some(capture) = &self.capturing {
+                                    if let Some(capture) = &mut self.capturing {
                                         Self::write_prodlog_message(&mut self.stdout, &format!("Stopping capture of {} on {}:{}",
                                                                             capture.cmd,
                                                                             capture.host,
                                                                             capture.cwd))?;
-                                        Self::stop_capturing(&self.prodlog_dir, capture);
+                                        Self::stop_capturing(&self.prodlog_dir, capture)?;
                                     } else {
                                         Self::write_prodlog_message(&mut self.stdout, "Warning: Tried to stop capture, but no capture was active")?
                                     }
