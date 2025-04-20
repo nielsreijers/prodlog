@@ -1,22 +1,151 @@
 use nix::sys::wait::waitpid;
 use std::fs::File;
-use std::io::{ Read, Write };
-use std::os::fd::{AsRawFd, RawFd};
-use termion::raw::IntoRawMode;
+use std::io::{ Read, Stdout, Write };
+use std::os::fd::{ AsRawFd, RawFd };
+use termion::raw::{ IntoRawMode, RawTerminal };
 use termion::input::TermReadEventsAndRaw;
-use nix::pty::{ForkptyResult, Winsize};
+use nix::pty::{ ForkptyResult, Winsize };
 use nix::ioctl_write_ptr_bad;
 use termion::terminal_size;
 use tokio::sync::mpsc;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{ signal, SignalKind };
 use nix::unistd::execvp;
 use std::ffi::CString;
+
+const PRODLOG_CMD_PREFIX: &[u8] = "#### PRODLOG(dd0d3038-1d43-11f0-9761-022486cd4c38):".as_bytes();
+
+enum StreamState {
+    InProgress(String),
+    Completed(String, usize)
+}
+
+enum StdoutHandlerState {
+    Normal,
+    MatchingPrefix(usize),
+    ReadingCommand(StreamState),
+}
+struct StdoutHandler {
+    stdout: RawTerminal<Stdout>,
+    state: StdoutHandlerState,
+}
+
+impl StdoutHandler {
+    fn new(stdout: RawTerminal<Stdout>) -> Self {
+        Self { stdout, state: StdoutHandlerState::Normal }
+    }
+
+    fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error>  {
+        self.stdout.write(buf)?;
+        self.stdout.flush()?;
+        Ok(())
+    }
+
+    fn read_until_terminator(&self, buffer: &[u8], mut pos: usize, n: usize, state: &StreamState) -> StreamState {
+        if let StreamState::InProgress(partial) = state {
+            let start= pos;
+            while pos < n && buffer[pos] != b';' {
+                pos += 1;
+            }
+            let new_value = partial.to_owned() + &String::from_utf8_lossy(&buffer[start..pos]).to_string();
+            if pos == n {
+                // Ran out of data, wait for next chunk
+                StreamState::InProgress(new_value)
+            } else {
+                StreamState::Completed(new_value, pos)
+            }
+        } else {
+            panic!("Invalid state");
+        }
+    }
+
+    fn process(&mut self, buffer: &[u8], n: usize) -> Result<(), std::io::Error> {
+        let mut start = 0;
+        let mut pos = 0;
+        while pos < n {
+            match &self.state {
+                StdoutHandlerState::Normal => {
+                    while pos < n && buffer[pos] != PRODLOG_CMD_PREFIX[0] {
+                        pos += 1;
+                    }
+                    // Print the data scanned so far
+                    self.write_and_flush(&buffer[start..pos])?;
+                    if pos < n {
+                        // If pos < n, the current character may be the start of a PRODLOG command.
+                        self.state = StdoutHandlerState::MatchingPrefix(1);
+                        pos += 1;
+                    }
+                }
+                StdoutHandlerState::MatchingPrefix(mut bytes_matched) => {
+                    while
+                        pos < n &&
+                        bytes_matched < PRODLOG_CMD_PREFIX.len() &&
+                        buffer[pos] == PRODLOG_CMD_PREFIX[bytes_matched]
+                    {
+                        pos += 1;
+                        bytes_matched += 1;
+                    }
+                    if bytes_matched == PRODLOG_CMD_PREFIX.len() {
+                        // Command prefix matched, start reading the command.
+                        start = pos;
+                        self.state = StdoutHandlerState::ReadingCommand(StreamState::InProgress("".to_string()));
+                    } else if pos == n {
+                        // Ran out of data, wait for next chunk
+                        self.state = StdoutHandlerState::MatchingPrefix(bytes_matched);
+                    } else {
+                        // Prefix didn't match, print the bytes that did match
+                        self.write_and_flush(&PRODLOG_CMD_PREFIX[..bytes_matched])?;
+                        // And reset the state to Normal
+                        start = pos;
+                        self.state = StdoutHandlerState::Normal;
+                    }
+                }
+                StdoutHandlerState::ReadingCommand(stream_state) => {
+                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
+                    match stream_state {
+                        StreamState::InProgress(_) => {
+                            self.state = StdoutHandlerState::ReadingCommand(stream_state);
+                            pos = n;
+                        }
+                        StreamState::Completed(cmd, new_pos) => {
+                            pos = new_pos;
+                            match cmd.as_str() {
+                                "IS CURRENTLY INACTIVE" => {
+                                    self.write_and_flush("    ======    prodlog is currently active :-)    ======".as_bytes())?;
+                                    start = pos;
+                                    self.state = StdoutHandlerState::Normal;
+                                }
+                                "ARE YOU RUNNING?" => {
+                                    todo!()
+                                }
+                                "START CAPTURE" => {
+                                    todo!()
+                                }
+                                "STOP CAPTURE" => {
+                                    todo!()
+                                }
+                                _ => {
+                                    // Unknown command. Just print what we saw on the child's stdout.
+                                    self.write_and_flush(PRODLOG_CMD_PREFIX)?;
+                                    self.write_and_flush(cmd.as_bytes())?;
+                                    self.write_and_flush(b";")?;
+                                    start = pos;
+                                    self.state = StdoutHandlerState::Normal;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 fn run_child() -> Result<(), std::io::Error> {
     // let shell = std::env::var("SHELL").unwrap_or_else(|_| String::from("/bin/bash"));
     let shell = String::from("/bin/bash");
     let cmd = CString::new(shell).expect("CString::new failed");
-    let args : [CString; 0] = [];
+    let args: [CString; 0] = [];
     execvp(&cmd, &args)?;
     Ok(())
 }
@@ -32,9 +161,12 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-async fn run_parent(child: nix::unistd::Pid, master: std::os::fd::OwnedFd) -> Result<(), std::io::Error> {
+async fn run_parent(
+    child: nix::unistd::Pid,
+    master: std::os::fd::OwnedFd
+) -> Result<(), std::io::Error> {
     // Set terminal to raw mode
-    let mut raw_stdout = std::io::stdout().into_raw_mode()?;
+    let raw_stdout = std::io::stdout().into_raw_mode()?;
 
     // Get the file descriptor for the master pty.
     let master_fd = master.as_raw_fd();
@@ -55,7 +187,7 @@ async fn run_parent(child: nix::unistd::Pid, master: std::os::fd::OwnedFd) -> Re
     });
 
     // Read our stdin and forward it to the child.
-    let stdin_reader_thread = tokio::task::spawn_blocking(move || {
+    let _stdin_reader_thread = tokio::task::spawn_blocking(move || {
         let stdin = std::io::stdin();
         for event in stdin.events_and_raw() {
             let (_, raw) = event.unwrap();
@@ -69,14 +201,14 @@ async fn run_parent(child: nix::unistd::Pid, master: std::os::fd::OwnedFd) -> Re
     // Start forwarding the child's stdout to our stdout.
     let _forward_stdout = tokio::spawn(async move {
         let mut buffer = [0; 1024];
+        let mut stream_handler = StdoutHandler::new(raw_stdout);
         loop {
             let n = raw_master_read.read(&mut buffer);
             if let Ok(n) = n {
                 if n == 0 {
                     break; // EOF reached
                 }
-                raw_stdout.write(&buffer[..n]).unwrap();
-                raw_stdout.flush().unwrap();
+                stream_handler.process(&buffer, n).unwrap();
             } else {
                 break;
             }
@@ -98,6 +230,7 @@ async fn run_parent(child: nix::unistd::Pid, master: std::os::fd::OwnedFd) -> Re
         waitpid(child, None).unwrap();
     });
     wait_child_exit.await.unwrap();
+
     Ok(())
 }
 
@@ -105,9 +238,7 @@ async fn run_parent(child: nix::unistd::Pid, master: std::os::fd::OwnedFd) -> Re
 async fn main() {
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
-        ForkptyResult::Parent { child, master } => {
-            run_parent(child, master).await
-        }
+        ForkptyResult::Parent { child, master } => { run_parent(child, master).await }
     };
     if let Err(e) = result {
         eprintln!("PRODLOG EXITING WITH ERROR: {}", e);
