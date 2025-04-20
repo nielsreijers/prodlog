@@ -13,8 +13,25 @@ use nix::unistd::execvp;
 use std::ffi::CString;
 use chrono::{DateTime, Utc};
 use termion::{color, style};
+use serde::{Serialize, Deserialize};
+use std::fs;
 
 const PRODLOG_CMD_PREFIX: &[u8] = "#### PRODLOG(dd0d3038-1d43-11f0-9761-022486cd4c38):".as_bytes();
+
+#[derive(Serialize, Deserialize)]
+struct ProdlogEntry {
+    start_time: String,
+    host: String,
+    command: String,
+    end_time: String,
+    duration_ms: u64,
+    log_filename: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ProdlogData {
+    entries: Vec<ProdlogEntry>,
+}
 
 enum StreamState {
     InProgress(String),
@@ -162,6 +179,24 @@ impl StdoutHandler {
             .open(format!("{prodlog_dir}/prodlog.md"))?
             .write_all(entry.as_bytes())?;
 
+        // Log to JSON file for webui
+        let json_path = format!("{}/prodlog.json", prodlog_dir);
+        let mut prodlog_data = if let Ok(content) = fs::read_to_string(&json_path) {
+            serde_json::from_str(&content).unwrap_or(ProdlogData { entries: Vec::new() })
+        } else {
+            ProdlogData { entries: Vec::new() }
+        };
+        prodlog_data.entries.push(ProdlogEntry {
+            host: host.to_string(),
+            start_time: state.start_time.to_rfc3339(),
+            end_time: end_time.to_rfc3339(),
+            duration_ms,
+            command: cmd_long.to_string(),
+            log_filename: log_filename.to_string(),
+        });
+        fs::write(&json_path, serde_json::to_string_pretty(&prodlog_data)?)?;
+
+
         let footer = format!(
             "```\n\
             End:      {formatted_end_long}\n\
@@ -171,6 +206,8 @@ impl StdoutHandler {
         state.log_by_host.flush()?;
         state.log_all_hosts.flush()?;
 
+        
+        
         Ok(())
     }
 
