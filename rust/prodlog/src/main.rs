@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tokio::signal::unix::{ signal, SignalKind };
 use nix::unistd::execvp;
 use std::ffi::CString;
+use chrono::{DateTime, Utc};
 
 const PRODLOG_CMD_PREFIX: &[u8] = "#### PRODLOG(dd0d3038-1d43-11f0-9761-022486cd4c38):".as_bytes();
 
@@ -19,25 +20,56 @@ enum StreamState {
     Completed(String, usize)
 }
 
+struct CaptureState {
+    host: String,
+    cwd: String,
+    cmd: String,
+    log: File,
+    start_time: DateTime<Utc>,
+}
+
 enum StdoutHandlerState {
     Normal,
     MatchingPrefix(usize),
-    ReadingCommand(StreamState),
+    ReadingProdlogCommand(StreamState),
+    InitCaptureHost(StreamState),
+    InitCaptureCwd(String, StreamState),
+    InitCaptureCmd(String, String, StreamState),
 }
 struct StdoutHandler {
     stdout: RawTerminal<Stdout>,
+    capturing: Option<CaptureState>,
     state: StdoutHandlerState,
 }
 
 impl StdoutHandler {
     fn new(stdout: RawTerminal<Stdout>) -> Self {
-        Self { stdout, state: StdoutHandlerState::Normal }
+        Self { stdout, capturing: None, state: StdoutHandlerState::Normal }
     }
 
     fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error>  {
         self.stdout.write(buf)?;
         self.stdout.flush()?;
+        if let Some(capture) = &mut self.capturing {
+            capture.log.write_all(buf)?;
+            capture.log.flush()?;
+        }
         Ok(())
+    }
+
+    fn start_capturing(host: &str, cwd: &str, cmd: &str) -> CaptureState {
+        println!("++++++++PRODLOG: Starting capture of {} on {}:{}", cmd, host, cwd);
+        CaptureState {
+            host: host.to_string(),
+            cwd: cwd.to_string(),
+            cmd: cmd.to_string(),
+            log: File::create(format!("/home/niels/tmp/prodlog/{}.log", Utc::now().format("%Y-%m-%d_%H-%M-%S"))).unwrap(),
+            start_time: Utc::now(),
+        }
+    }
+
+    fn stop_capturing(state: &CaptureState) {
+        println!("PRODLOG: Stopping capture of {} on {}:{}", state.cmd, state.host, state.cwd);
     }
 
     fn read_until_terminator(&self, buffer: &[u8], mut pos: usize, n: usize, state: &StreamState) -> StreamState {
@@ -51,6 +83,8 @@ impl StdoutHandler {
                 // Ran out of data, wait for next chunk
                 StreamState::InProgress(new_value)
             } else {
+                // Skip terminator
+                pos += 1;
                 StreamState::Completed(new_value, pos)
             }
         } else {
@@ -59,11 +93,11 @@ impl StdoutHandler {
     }
 
     fn process(&mut self, buffer: &[u8], n: usize) -> Result<(), std::io::Error> {
-        let mut start = 0;
         let mut pos = 0;
         while pos < n {
             match &self.state {
                 StdoutHandlerState::Normal => {
+                    let start = pos;
                     while pos < n && buffer[pos] != PRODLOG_CMD_PREFIX[0] {
                         pos += 1;
                     }
@@ -86,8 +120,7 @@ impl StdoutHandler {
                     }
                     if bytes_matched == PRODLOG_CMD_PREFIX.len() {
                         // Command prefix matched, start reading the command.
-                        start = pos;
-                        self.state = StdoutHandlerState::ReadingCommand(StreamState::InProgress("".to_string()));
+                        self.state = StdoutHandlerState::ReadingProdlogCommand(StreamState::InProgress("".to_string()));
                     } else if pos == n {
                         // Ran out of data, wait for next chunk
                         self.state = StdoutHandlerState::MatchingPrefix(bytes_matched);
@@ -95,15 +128,14 @@ impl StdoutHandler {
                         // Prefix didn't match, print the bytes that did match
                         self.write_and_flush(&PRODLOG_CMD_PREFIX[..bytes_matched])?;
                         // And reset the state to Normal
-                        start = pos;
                         self.state = StdoutHandlerState::Normal;
                     }
                 }
-                StdoutHandlerState::ReadingCommand(stream_state) => {
+                StdoutHandlerState::ReadingProdlogCommand(stream_state) => {
                     let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
                     match stream_state {
                         StreamState::InProgress(_) => {
-                            self.state = StdoutHandlerState::ReadingCommand(stream_state);
+                            self.state = StdoutHandlerState::ReadingProdlogCommand(stream_state);
                             pos = n;
                         }
                         StreamState::Completed(cmd, new_pos) => {
@@ -111,27 +143,67 @@ impl StdoutHandler {
                             match cmd.as_str() {
                                 "IS CURRENTLY INACTIVE" => {
                                     self.write_and_flush("    ======    prodlog is currently active :-)    ======".as_bytes())?;
-                                    start = pos;
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 "ARE YOU RUNNING?" => {
                                     todo!()
                                 }
                                 "START CAPTURE" => {
-                                    todo!()
+                                    self.state = StdoutHandlerState::InitCaptureHost(StreamState::InProgress("".to_string()));
                                 }
                                 "STOP CAPTURE" => {
-                                    todo!()
+                                    Self::stop_capturing(self.capturing.as_ref().unwrap());
+                                    self.capturing = None;
+                                    self.state = StdoutHandlerState::Normal;
                                 }
                                 _ => {
                                     // Unknown command. Just print what we saw on the child's stdout.
                                     self.write_and_flush(PRODLOG_CMD_PREFIX)?;
                                     self.write_and_flush(cmd.as_bytes())?;
                                     self.write_and_flush(b";")?;
-                                    start = pos;
                                     self.state = StdoutHandlerState::Normal;
                                 }
                             }
+                        }
+                    }
+                },
+                StdoutHandlerState::InitCaptureHost(stream_state) => {
+                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
+                    match stream_state {
+                        StreamState::InProgress(_) => {
+                            self.state = StdoutHandlerState::InitCaptureHost(stream_state);
+                            pos = n;
+                        }
+                        StreamState::Completed(host, new_pos) => {
+                            self.state = StdoutHandlerState::InitCaptureCwd(host, StreamState::InProgress("".to_string()));
+                            pos = new_pos;
+                        }
+                    }
+                }
+                StdoutHandlerState::InitCaptureCwd(host, stream_state) => {
+                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
+                    match stream_state {
+                        StreamState::InProgress(_) => {
+                            self.state = StdoutHandlerState::InitCaptureCwd(host.to_string(), stream_state);
+                            pos = n;
+                        }
+                        StreamState::Completed(cwd, new_pos) => {
+                            self.state = StdoutHandlerState::InitCaptureCmd(host.to_string(), cwd, StreamState::InProgress("".to_string()));
+                            pos = new_pos;
+                        }
+                    }
+                }
+                StdoutHandlerState::InitCaptureCmd(host, cwd, stream_state) => {
+                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
+                    match stream_state {
+                        StreamState::InProgress(_) => {
+                            self.state = StdoutHandlerState::InitCaptureCmd(host.to_string(), cwd.to_string(), stream_state);
+                            pos = n;
+                        }
+                        StreamState::Completed(cmd, new_pos) => {
+                            self.capturing = Some(Self::start_capturing(host, cwd, &cmd));
+                            self.state = StdoutHandlerState::Normal;
+                            pos = new_pos;
                         }
                     }
                 }
