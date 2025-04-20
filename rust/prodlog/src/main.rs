@@ -47,6 +47,15 @@ impl StdoutHandler {
         Self { stdout, capturing: None, state: StdoutHandlerState::Normal }
     }
 
+    fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
+
+        out.write(b"PRODLOG: ");
+        out.write(msg.as_bytes());
+        out.write(b"\n\r");
+        out.flush();
+        Ok(())
+    }
+
     fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error>  {
         self.stdout.write(buf)?;
         self.stdout.flush()?;
@@ -58,7 +67,6 @@ impl StdoutHandler {
     }
 
     fn start_capturing(host: &str, cwd: &str, cmd: &str) -> CaptureState {
-        println!("++++++++PRODLOG: Starting capture of {} on {}:{}", cmd, host, cwd);
         CaptureState {
             host: host.to_string(),
             cwd: cwd.to_string(),
@@ -69,7 +77,6 @@ impl StdoutHandler {
     }
 
     fn stop_capturing(state: &CaptureState) {
-        println!("PRODLOG: Stopping capture of {} on {}:{}", state.cmd, state.host, state.cwd);
     }
 
     fn read_until_terminator(&self, buffer: &[u8], mut pos: usize, n: usize, state: &StreamState) -> StreamState {
@@ -142,7 +149,7 @@ impl StdoutHandler {
                             pos = new_pos;
                             match cmd.as_str() {
                                 "IS CURRENTLY INACTIVE" => {
-                                    self.write_and_flush("    ======    prodlog is currently active :-)    ======".as_bytes())?;
+                                    Self::write_prodlog_message(&mut self.stdout, "Prodlog is currently active!")?;
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 "ARE YOU RUNNING?" => {
@@ -152,7 +159,15 @@ impl StdoutHandler {
                                     self.state = StdoutHandlerState::InitCaptureHost(StreamState::InProgress("".to_string()));
                                 }
                                 "STOP CAPTURE" => {
-                                    Self::stop_capturing(self.capturing.as_ref().unwrap());
+                                    if let Some(capture) = &self.capturing {
+                                        Self::write_prodlog_message(&mut self.stdout, &format!("Stopping capture of {} on {}:{}",
+                                                                            capture.cmd,
+                                                                            capture.host,
+                                                                            capture.cwd))?;
+                                        Self::stop_capturing(capture);
+                                    } else {
+                                        Self::write_prodlog_message(&mut self.stdout, "Warning: Tried to stop capture, but no capture was active")?
+                                    }
                                     self.capturing = None;
                                     self.state = StdoutHandlerState::Normal;
                                 }
@@ -201,6 +216,7 @@ impl StdoutHandler {
                             pos = n;
                         }
                         StreamState::Completed(cmd, new_pos) => {
+                            Self::write_prodlog_message(&mut self.stdout, &format!("Starting capture of {} on {}:{}", cmd, host, cwd))?;
                             self.capturing = Some(Self::start_capturing(host, cwd, &cmd));
                             self.state = StdoutHandlerState::Normal;
                             pos = new_pos;
