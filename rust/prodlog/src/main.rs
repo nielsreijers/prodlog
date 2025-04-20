@@ -12,6 +12,7 @@ use tokio::signal::unix::{ signal, SignalKind };
 use nix::unistd::execvp;
 use std::ffi::CString;
 use chrono::{DateTime, Utc};
+use termion::{color, style};
 
 const PRODLOG_CMD_PREFIX: &[u8] = "#### PRODLOG(dd0d3038-1d43-11f0-9761-022486cd4c38):".as_bytes();
 
@@ -48,11 +49,21 @@ impl StdoutHandler {
     }
 
     fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
+        write!(out, "{}{}{}{}",
+               style::Bold,
+               color::Fg(color::Green),
+               style::Blink,
+               "PRODLOG: " // The text to be styled
+        )?;
 
-        out.write(b"PRODLOG: ");
-        out.write(msg.as_bytes());
-        out.write(b"\n\r");
-        out.flush();
+        // Reset styles immediately after so 'msg' is printed normally
+        write!(out, "{}{}", style::Reset, msg)?;
+
+        // Write the newline and carriage return
+        write!(out, "\n\r")?;
+
+        // Flush the output buffer
+        out.flush()?;
         Ok(())
     }
 
