@@ -20,9 +20,10 @@ use std::path::PathBuf; // Use PathBuf for paths
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
 const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
-const CMD_ARE_YOU_RUNNING: &str = "ARE YOU RUNNING?";
+const CMD_ARE_YOU_RUNNING: &str = "PRODLOG, ARE YOU RUNNING?";
 const CMD_START_CAPTURE: &str = "START CAPTURE";
 const CMD_STOP_CAPTURE: &str = "STOP CAPTURE";
+const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
 
 /// Your application's description (optional but good practice)
 #[derive(Parser, Debug)]
@@ -76,30 +77,28 @@ enum StdoutHandlerState {
 struct StdoutHandler {
     prodlog_dir: PathBuf,
     stdout: RawTerminal<Stdout>,
+    child_stdin_tx: mpsc::Sender<Vec<u8>>,
     capturing: Option<CaptureState>,
     state: StdoutHandlerState,
 }
 
+fn format_prodlog_message(msg: &str) -> String {
+    format!("{}{}{}{}{}{}",
+            style::Bold,
+            color::Fg(color::Green),
+            style::Blink,
+            "PRODLOG: ",
+            style::Reset,
+            msg)
+}
+
 impl StdoutHandler {
-    fn new(prodlog_dir: PathBuf, stdout: RawTerminal<Stdout>) -> Self {
-        Self { prodlog_dir, stdout, capturing: None, state: StdoutHandlerState::Normal }
+    fn new(prodlog_dir: PathBuf, child_stdin_tx: mpsc::Sender<Vec<u8>>, stdout: RawTerminal<Stdout>) -> Self {
+        Self { prodlog_dir, child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal }
     }
 
     fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
-        write!(out, "{}{}{}{}",
-               style::Bold,
-               color::Fg(color::Green),
-               style::Blink,
-               "PRODLOG: " // The text to be styled
-        )?;
-
-        // Reset styles immediately after so 'msg' is printed normally
-        write!(out, "{}{}", style::Reset, msg)?;
-
-        // Write the newline and carriage return
-        write!(out, "\n\r")?;
-
-        // Flush the output buffer
+        write!(out, "{}", format_prodlog_message(msg));
         out.flush()?;
         Ok(())
     }
@@ -302,7 +301,10 @@ impl StdoutHandler {
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_ARE_YOU_RUNNING => {
-                                    todo!()
+                                    // TODO: figure out why async send doesn't work here. It works fine in run_parent. Are we deadlocking?
+                                    Self::write_prodlog_message(&mut self.stdout, "Telling server side prodlog recording is active:")?;
+                                    self.child_stdin_tx.blocking_send(REPLY_YES_PRODLOG_IS_RUNNING.to_vec()).unwrap();
+                                    self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_START_CAPTURE => {
                                     self.state = StdoutHandlerState::InitCaptureHost(StreamState::InProgress("".to_string()));
@@ -415,6 +417,7 @@ async fn run_parent(
 
     // Create a channel for sending to the child's stdin
     let (child_stdin_tx, mut child_stdin_rx) = mpsc::channel::<Vec<u8>>(100);
+    let child_stdin_tx2 = child_stdin_tx.clone();
 
     // Forward whatever bytes appear on the channel to the child's stdin.
     let _stdin_sender_handle = tokio::spawn(async move {
@@ -438,9 +441,9 @@ async fn run_parent(
 
     // Start forwarding the child's stdout to our stdout.
     let prodlog_dir = cli_args.dir.clone();
-    let _forward_stdout = tokio::spawn(async move {
+    let _forward_stdout = tokio::task::spawn_blocking(move || {
         let mut buffer = [0; 1024];
-        let mut stream_handler = StdoutHandler::new(prodlog_dir, raw_stdout);
+        let mut stream_handler = StdoutHandler::new(prodlog_dir, child_stdin_tx2, raw_stdout);
         loop {
             let n = raw_master_read.read(&mut buffer);
             if let Ok(n) = n {
@@ -476,6 +479,7 @@ async fn run_parent(
 #[tokio::main]
 async fn main() {
     let cli_args = CliArgs::parse();
+    println!("prodlog logging to {:?}", cli_args.dir);
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
         ForkptyResult::Parent { child, master } => { run_parent(cli_args, child, master).await }
