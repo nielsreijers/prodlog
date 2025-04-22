@@ -15,8 +15,21 @@ use chrono::{DateTime, Utc};
 use termion::{color, style};
 use serde::{Serialize, Deserialize};
 use std::fs;
+use clap::Parser;
+use std::path::PathBuf; // Use PathBuf for paths
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
+
+/// Your application's description (optional but good practice)
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)] // Add metadata
+struct CliArgs {
+    /// Sets the directory for production logs.
+    #[arg(long, value_name = "DIR", default_value = "/home/niels/tmp/prodlog")]
+    dir: PathBuf,
+
+    // Add other command-line arguments here if needed
+}
 
 #[derive(Serialize, Deserialize)]
 struct ProdlogEntry {
@@ -57,15 +70,15 @@ enum StdoutHandlerState {
     InitCaptureCmd(String, String, StreamState),
 }
 struct StdoutHandler {
-    prodlog_dir: String,
+    prodlog_dir: PathBuf,
     stdout: RawTerminal<Stdout>,
     capturing: Option<CaptureState>,
     state: StdoutHandlerState,
 }
 
 impl StdoutHandler {
-    fn new(stdout: RawTerminal<Stdout>) -> Self {
-        Self { prodlog_dir: "/home/niels/tmp/prodlog".to_string(), stdout, capturing: None, state: StdoutHandlerState::Normal }
+    fn new(prodlog_dir: PathBuf, stdout: RawTerminal<Stdout>) -> Self {
+        Self { prodlog_dir, stdout, capturing: None, state: StdoutHandlerState::Normal }
     }
 
     fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
@@ -115,16 +128,16 @@ impl StdoutHandler {
         format!("prodlog_output/{}/{}-{}.md", host, formatted_time, short_cmd)
     }
 
-    fn start_capturing(prodlog_dir: &str, host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
-        std::fs::create_dir_all(format!("{}/prodlog_output/{}", prodlog_dir, host))?;
-        std::fs::create_dir_all(format!("{}/prodlog_output/all-hosts", prodlog_dir))?;
+    fn start_capturing(prodlog_dir: &PathBuf, host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
+        std::fs::create_dir_all(prodlog_dir.join(format!("prodlog_output/{}", host)))?;
+        std::fs::create_dir_all(prodlog_dir.join("prodlog_output/all-hosts"))?;
         
         let start_time = Utc::now();
         let formatted_start_long = start_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
         let log_filename_by_host = Self::get_by_host_log_filename(start_time, host, cmd);
         let log_filename_all_hosts = Self::get_all_hosts_log_filename(start_time, host, cmd);
-        let mut log_by_host = File::create(format!("{}/{}", prodlog_dir, log_filename_by_host))?;
-        let mut log_all_hosts = File::create(format!("{}/{}", prodlog_dir, log_filename_all_hosts))?;
+        let mut log_by_host = File::create(prodlog_dir.join(log_filename_by_host.clone()))?;
+        let mut log_all_hosts = File::create(prodlog_dir.join(log_filename_all_hosts.clone()))?;
 
         let header = format!(
             "Host:     {host}\n\
@@ -147,7 +160,7 @@ impl StdoutHandler {
         })
     }
 
-    fn stop_capturing(prodlog_dir: &str, state: &mut CaptureState) -> Result<(), std::io::Error> {
+    fn stop_capturing(prodlog_dir: &PathBuf, state: &mut CaptureState) -> Result<(), std::io::Error> {
         std::fs::create_dir_all(prodlog_dir).unwrap();
 
         let end_time = Utc::now();
@@ -176,11 +189,11 @@ impl StdoutHandler {
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(format!("{prodlog_dir}/prodlog.md"))?
+            .open(prodlog_dir.join("prodlog.md"))?
             .write_all(entry.as_bytes())?;
 
         // Log to JSON file for webui
-        let json_path = format!("{}/prodlog.json", prodlog_dir);
+        let json_path = prodlog_dir.join("prodlog.json");
         let mut prodlog_data = if let Ok(content) = fs::read_to_string(&json_path) {
             serde_json::from_str(&content).unwrap_or(ProdlogData { entries: Vec::new() })
         } else {
@@ -382,6 +395,7 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
 }
 
 async fn run_parent(
+    cli_args: CliArgs,
     child: nix::unistd::Pid,
     master: std::os::fd::OwnedFd
 ) -> Result<(), std::io::Error> {
@@ -419,9 +433,10 @@ async fn run_parent(
     });
 
     // Start forwarding the child's stdout to our stdout.
+    let prodlog_dir = cli_args.dir.clone();
     let _forward_stdout = tokio::spawn(async move {
         let mut buffer = [0; 1024];
-        let mut stream_handler = StdoutHandler::new(raw_stdout);
+        let mut stream_handler = StdoutHandler::new(prodlog_dir, raw_stdout);
         loop {
             let n = raw_master_read.read(&mut buffer);
             if let Ok(n) = n {
@@ -456,9 +471,10 @@ async fn run_parent(
 
 #[tokio::main]
 async fn main() {
+    let cli_args = CliArgs::parse();
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
-        ForkptyResult::Parent { child, master } => { run_parent(child, master).await }
+        ForkptyResult::Parent { child, master } => { run_parent(cli_args, child, master).await }
     };
     if let Err(e) = result {
         eprintln!("PRODLOG EXITING WITH ERROR: {}", e);
