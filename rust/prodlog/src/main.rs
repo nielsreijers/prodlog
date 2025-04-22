@@ -19,6 +19,10 @@ use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
+const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
+const CMD_ARE_YOU_RUNNING: &str = "ARE YOU RUNNING?";
+const CMD_START_CAPTURE: &str = "START CAPTURE";
+const CMD_STOP_CAPTURE: &str = "STOP CAPTURE";
 
 /// Your application's description (optional but good practice)
 #[derive(Parser, Debug)]
@@ -293,17 +297,17 @@ impl StdoutHandler {
                         StreamState::Completed(cmd, new_pos) => {
                             pos = new_pos;
                             match cmd.as_str() {
-                                "IS CURRENTLY INACTIVE" => {
+                                CMD_IS_INACTIVE => {
                                     Self::write_prodlog_message(&mut self.stdout, "Prodlog is currently active!")?;
                                     self.state = StdoutHandlerState::Normal;
                                 }
-                                "ARE YOU RUNNING?" => {
+                                CMD_ARE_YOU_RUNNING => {
                                     todo!()
                                 }
-                                "START CAPTURE" => {
+                                CMD_START_CAPTURE => {
                                     self.state = StdoutHandlerState::InitCaptureHost(StreamState::InProgress("".to_string()));
                                 }
-                                "STOP CAPTURE" => {
+                                CMD_STOP_CAPTURE => {
                                     if let Some(capture) = &mut self.capturing {
                                         Self::write_prodlog_message(&mut self.stdout, &format!("Stopping capture of {} on {}:{}",
                                                                             capture.cmd,
