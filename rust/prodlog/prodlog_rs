@@ -13,33 +13,38 @@ import argparse
 import time
 import json
 
+PRODLOG_CMD_PREFIX = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:"
+CMD_IS_INACTIVE = "IS CURRENTLY INACTIVE"
+CMD_ARE_YOU_RUNNING = "PRODLOG, ARE YOU RUNNING?"
+CMD_START_CAPTURE = "START CAPTURE"
+CMD_STOP_CAPTURE = "STOP CAPTURE"
+REPLY_YES_PRODLOG_IS_RUNNING = "PRODLOG IS RUNNING"
+
 def main():
     parser = argparse.ArgumentParser(description='Record shell output')
-    parser.add_argument('command', nargs='?', choices=['run', 'record'], help='Command to execute')
-    parser.add_argument('--dir', '-d', default=str(Path.home() / '.prodlog'),
-                       help='Base directory for logs (default: ~/.prodlog)',
-                       type=lambda p: str(Path(p).expanduser().resolve()))
+    parser.add_argument('command', nargs='?', choices=['run'], help='Command to execute')
     parser.add_argument('args', nargs=argparse.REMAINDER, help='Command line arguments')
 
     args = parser.parse_args()
 
     if args.command is None:
         parser.print_help()
-        print("\n##### PRODLOG IS CURRENTLY INACTIVE #####")
+        send_command(CMD_IS_INACTIVE)
         sys.exit(1)
     elif args.command == 'run':
         run_command(args.args)
-    elif args.command == 'record':
-        print(f"Prodlog will write to: {args.dir}")
-        record_shell(base_dir=Path(args.dir))
+
+def send_command(*cmd):
+    print(f"\n{PRODLOG_CMD_PREFIX}{";".join(cmd)};")
 
 def run_command(command):
     try:
         hostname = socket.gethostname()
+        cwd = os.getcwd()
         cmd_str = ' '.join(command)
 
         # Check if prodlog is running
-        print("##### PROD LOG, ARE YOU RUNNING? #####", flush=True)
+        send_command(CMD_ARE_YOU_RUNNING)
 
         # Wait up to 1 second for response
         rlist, _, _ = select.select([sys.stdin], [], [], 1.0)
@@ -48,14 +53,12 @@ def run_command(command):
             sys.exit(1)
 
         response = sys.stdin.readline().strip()
-        if response != "##### OUTPUT RECORDED BY PRODLOG #####":
+        if response != REPLY_YES_PRODLOG_IS_RUNNING:
             print("Error: unexpected response from prodlog")
             sys.exit(1)
 
         # Print start marker with metadata
-        print("\n##### PRODLOG START CAPTURE #####")
-        print(hostname)
-        print(cmd_str)
+        send_command(CMD_START_CAPTURE, hostname, cwd, cmd_str)
 
         # Execute command in a PTY
         master_fd, slave_fd = pty.openpty()
@@ -103,292 +106,13 @@ def run_command(command):
                 pass
 
         # Print stop marker
-        print("##### PRODLOG STOP CAPTURE #####")
+        send_command(CMD_STOP_CAPTURE)
 
     except Exception as e:
         print(f"Error in run_command: {str(e)}", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
-
-def record_shell(base_dir=Path.home() / '.prodlog'):
-    # Create log directory if it doesn't exist
-    base_dir = Path(base_dir)
-    base_dir.mkdir(parents=True, exist_ok=True)
-    main_log_file = base_dir / 'prodlog.md'
-    json_log_file = base_dir / 'prodlog.json'
-
-    # Initialize JSON file if it doesn't exist
-    if not json_log_file.exists():
-        with open(json_log_file, 'w') as f:
-            json.dump({"entries": []}, f)
-
-    # Add this function to handle window size changes
-    def set_window_size(fd):
-        # Get the window size of our terminal
-        import struct, fcntl, termios
-        size = struct.pack('HHHH', 0, 0, 0, 0)
-        size = fcntl.ioctl(sys.stdin.fileno(), termios.TIOCGWINSZ, size)
-        rows, cols, _, _ = struct.unpack('HHHH', size)
-        # Set the child terminal to the same size
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
-
-    def read(fd):
-        # Add buffer as instance variable if not present
-        if not hasattr(read, 'buffer'):
-            read.buffer = ''
-        if not hasattr(read, 'capturing'):
-            read.capturing = False
-        if not hasattr(read, 'capture_metadata'):
-            read.capture_metadata = 0  # Counter for metadata lines after START
-        if not hasattr(read, 'hostname'):
-            read.hostname = None
-        if not hasattr(read, 'start_time'):
-            read.start_time = None
-        if not hasattr(read, 'command'):
-            read.command = None
-        if not hasattr(read, 'alternate_screen'):
-            read.alternate_screen = False
-        if not hasattr(read, 'current_logfile'):
-            read.current_logfile = None
-        if not hasattr(read, 'all_hosts_logfile'):
-            read.all_hosts_logfile = None
-
-        # Read raw data
-        data = os.read(fd, 1024)
-        decoded = data.decode(errors='replace')
-
-        # Check for alternate screen mode sequences
-        if '\x1b[?1049h' in decoded:  # Enter alternate screen
-            read.alternate_screen = True
-            return data  # Pass through raw data
-        elif '\x1b[?1049l' in decoded:  # Exit alternate screen
-            read.alternate_screen = False
-            return data  # Pass through raw data
-        elif read.alternate_screen:
-            return data  # Pass through raw data while in alternate screen
-
-        # Add to buffer
-        read.buffer += decoded
-
-        # Process complete lines
-        lines = read.buffer.split('\n')
-        # Keep the last potentially partial line in the buffer
-        read.buffer = lines[-1] if not decoded.endswith('\n') else ''
-
-        # Prepare modified data for terminal display
-        modified_data = ''
-
-        # Process all complete lines
-        for line in lines[:-1]:
-            # Check for prodlog running query
-            if "##### PROD LOG, ARE YOU RUNNING? #####" in line:
-                os.write(fd, b"##### OUTPUT RECORDED BY PRODLOG #####\n")  # Write directly to subprocess
-                # Don't add to modified_data since it will be received and displayed by run_command
-                continue
-            # Replace inactive message with active message
-            if "##### PRODLOG IS CURRENTLY INACTIVE" in line:
-                modified_data += "Prodlog is currently ACTIVE\n"
-                continue
-
-            if read.capture_metadata > 0:
-                read.capture_metadata -= 1
-                if read.capture_metadata == 1:
-                    read.hostname = line.strip()  # Clean up the hostname
-                elif read.capture_metadata == 0:
-                    read.command = line
-                    # Get start time in UTC
-                    read.start_time = datetime.datetime.now(datetime.timezone.utc)
-
-                    # Create hostname directory and get log filename
-                    output_dir = base_dir / "prodlog_output" / read.hostname
-                    output_dir.mkdir(parents=True, exist_ok=True)
-
-                    # Create all-hosts directory
-                    all_hosts_dir = base_dir / "prodlog_output" / "all-hosts"
-                    all_hosts_dir.mkdir(parents=True, exist_ok=True)
-
-                    # Get first word of command for filename
-                    first_word = read.command.split()[0]
-                    timestamp = read.start_time.strftime('%Y%m%d_%H%M%S')
-
-                    read.current_logfile = output_dir / f"{timestamp}-{first_word}.md"
-                    read.all_hosts_logfile = all_hosts_dir / f"{timestamp}-{read.hostname}-{first_word}.md"
-
-                    # Format timestamp nicely
-                    formatted_time = read.start_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
-
-                    # Format title timestamp (HH:MM only)
-                    title_time = read.start_time.strftime('%Y-%m-%d %H:%M')
-
-                    # Write header to both log files
-                    for logfile in [read.current_logfile, read.all_hosts_logfile]:
-                        with open(logfile, 'w') as f:
-                            f.write(f"Host:     {read.hostname}\n")
-                            f.write(f"Start:    {formatted_time}\n")
-                            f.write(f"Command:  {read.command}\n")
-                            f.write("Output:\n")
-                            f.write("```\n\n")
-                            f.flush()
-                continue
-
-            if "##### PRODLOG START CAPTURE #####" in line:
-                read.capturing = True
-                read.capture_metadata = 2  # Expect 2 lines: hostname, command
-                continue
-
-            if "##### PRODLOG STOP CAPTURE #####" in line:
-                read.capturing = False
-                # Calculate duration and format timestamps
-                end_time = datetime.datetime.now(datetime.timezone.utc)
-                duration_ms = (end_time - read.start_time).total_seconds() * 1000
-                formatted_end = end_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
-
-                # Format title timestamp and get first word
-                title_time = read.start_time.strftime('%Y-%m-%d %H:%M')
-                first_word = read.command.split()[0]
-                formatted_time = read.start_time.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] + " UTC"
-                timestamp = read.start_time.strftime('%Y%m%d_%H%M%S')
-
-                # Write complete entry to main log
-                entry = f"""## {title_time} on {read.hostname}: {first_word}
-```
-Host:     {read.hostname}
-Start:    {formatted_time}
-Command:  {read.command}
-End:      {formatted_end}
-Duration: {duration_ms:.2f}ms
-```
-Output:   [[prodlog_output/{read.hostname}/{timestamp}-{first_word}]]
-
----
-
-"""
-                with open(main_log_file, 'a') as f:
-                    f.write(entry)
-                    f.flush()
-
-                # Create JSON entry
-                json_entry = {
-                    "timestamp": read.start_time.isoformat(),
-                    "host": read.hostname,
-                    "command": read.command,
-                    "start_time": formatted_time,
-                    "end_time": formatted_end,
-                    "duration_ms": round(duration_ms, 2),
-                    "output_file": f"prodlog_output/{read.hostname}/{timestamp}-{first_word}.md",
-                    "all_hosts_file": f"prodlog_output/all-hosts/{timestamp}-{read.hostname}-{first_word}.md"
-                }
-
-                # Read existing JSON, append new entry, and write back
-                with open(json_log_file, 'r') as f:
-                    json_data = json.load(f)
-                json_data["entries"].append(json_entry)
-                with open(json_log_file, 'w') as f:
-                    json.dump(json_data, f, indent=2)
-
-                # Write footer to both log files
-                for logfile in [read.current_logfile, read.all_hosts_logfile]:
-                    with open(logfile, 'a') as f:
-                        f.write("\n```\n")
-                        f.write(f"End:      {formatted_end}\n")
-                        f.write(f"Duration: {duration_ms:.2f}ms\n")
-                        f.flush()
-                continue
-
-            # Output regular lines to terminal and both log files
-            modified_data += line + '\n'
-
-            # Only write to log files if we're capturing
-            if read.capturing:
-                for logfile in [read.current_logfile, read.all_hosts_logfile]:
-                    with open(logfile, 'a') as f:
-                        f.write(line + '\n')
-                        f.flush()
-
-        # Handle any remaining partial line (likely a prompt)
-        if read.buffer:
-            if decoded.endswith('\n'):
-                # Complete line - clear any existing content first
-                modified_data += '\033[2K\r' + read.buffer + '\n'
-            else:
-                # Partial line/prompt - clear and rewrite
-                modified_data += '\033[2K\r' + read.buffer
-
-        return modified_data.encode()
-
-    # Initialize capturing state
-    read.capturing = False
-
-    # Save original terminal settings
-    old_settings = termios.tcgetattr(sys.stdin)
-
-    try:
-        # Create pseudo-terminal
-        pid, fd = pty.fork()
-
-        if pid == 0:  # Child process
-            # Execute user's shell
-            shell = os.environ.get('SHELL', '/bin/bash')
-            os.execv(shell, [shell])
-        else:  # Parent process
-            # Set initial window size
-            set_window_size(fd)
-
-            # Set raw mode
-            tty.setraw(sys.stdin.fileno())
-
-            while True:
-                try:
-                    # Check if child process has terminated
-                    wpid, status = os.waitpid(pid, os.WNOHANG)
-                    if wpid == pid:  # Child has terminated
-                        break
-
-                    # Watch both original input and child's output
-                    rfds = [sys.stdin, fd]
-                    reads, _, _ = select.select(rfds, [], [], 0.1)  # Add timeout
-
-                    for read_fd in reads:
-                        if read_fd == sys.stdin:
-                            # Forward input to child
-                            data = os.read(sys.stdin.fileno(), 1024)
-                            if data == b'\x1c':  # SIGWINCH - window size changed
-                                set_window_size(fd)
-                            try:
-                                os.write(fd, data)
-                            except OSError:
-                                # Shell probably died
-                                return  # Exit if we can't write to shell
-                        else:
-                            # Forward child's output to stdout
-                            try:
-                                data = read(fd)
-                                if not data:
-                                    continue  # Skip empty reads instead of raising EOFError
-                                os.write(sys.stdout.fileno(), data)
-                            except OSError:
-                                # Only exit if there's a real error reading from shell
-                                return
-
-                except (EOFError, OSError):
-                    # Only break the loop if there's a persistent error
-                    break
-
-    except Exception as e:
-        # Restore terminal settings before printing error
-        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
-        print(f"\nError in record_shell: {str(e)}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        if read.capturing:
-            with open(main_log_file, 'a') as f:
-                f.write(f"\nError: {str(e)}\n")
-        sys.exit(1)
-    finally:
-        # Restore original terminal settings
-        termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, old_settings)
-        print("\nprodlog record exiting...")
 
 if __name__ == "__main__":
     main()
