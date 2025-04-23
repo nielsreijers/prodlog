@@ -44,6 +44,7 @@ struct ProdlogEntry {
     end_time: String,
     duration_ms: u64,
     log_filename: String,
+    prodlog_version: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -210,6 +211,7 @@ impl StdoutHandler {
             duration_ms,
             command: cmd_long.to_string(),
             log_filename: log_filename.to_string(),
+            prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
         });
         fs::write(&json_path, serde_json::to_string_pretty(&prodlog_data)?)?;
 
