@@ -4,6 +4,7 @@ version = "2.0.0"
 edition = "2021"
 
 [dependencies]
+base64 = "0.22.1"
 chrono = "0.4.40"
 clap = { version = "4.5.37", features = ["derive"] }
 libc = "0.2.172"

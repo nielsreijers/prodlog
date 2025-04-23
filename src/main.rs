@@ -116,8 +116,19 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn get_short_command (cmd: &str) -> String {
+    fn get_short_command(cmd: &str) -> String {
         cmd.split_whitespace().next().unwrap().to_string()
+    }
+
+    fn base64_decode(&self, data: &str) -> String {
+        use base64::{Engine as _, engine::{general_purpose}};
+        match general_purpose::STANDARD.decode(data) {
+            Ok(bytes) => String::from_utf8(bytes).unwrap(),
+            Err(e) => {
+                println!("Error decoding base64: {}", e);
+                data.to_string() // Shouldn't happen, but if it does, just return the original string.   
+            }
+        }
     }
 
     fn get_all_hosts_log_filename (start_time: DateTime<Utc>, host: &str, cmd: &str) -> String {
@@ -342,6 +353,7 @@ impl StdoutHandler {
                             pos = n;
                         }
                         StreamState::Completed(host, new_pos) => {
+                            let host = self.base64_decode(&host);
                             self.state = StdoutHandlerState::InitCaptureCwd(host, StreamState::InProgress("".to_string()));
                             pos = new_pos;
                         }
@@ -355,6 +367,7 @@ impl StdoutHandler {
                             pos = n;
                         }
                         StreamState::Completed(cwd, new_pos) => {
+                            let cwd = self.base64_decode(&cwd);
                             self.state = StdoutHandlerState::InitCaptureCmd(host.to_string(), cwd, StreamState::InProgress("".to_string()));
                             pos = new_pos;
                         }
@@ -368,6 +381,7 @@ impl StdoutHandler {
                             pos = n;
                         }
                         StreamState::Completed(cmd, new_pos) => {
+                            let cmd = self.base64_decode(&cmd);
                             Self::write_prodlog_message(&mut self.stdout, &format!("Starting capture of {} on {}:{}", cmd, host, cwd))?;
                             self.capturing = Some(Self::start_capturing(&self.prodlog_dir, host, cwd, &cmd)?);
                             self.state = StdoutHandlerState::Normal;

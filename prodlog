@@ -12,6 +12,7 @@ import subprocess
 import argparse
 import time
 import json
+import base64
 
 PRODLOG_CMD_PREFIX = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:"
 CMD_IS_INACTIVE = "IS CURRENTLY INACTIVE"
@@ -34,8 +35,10 @@ def main():
     elif args.command == 'run':
         run_command(args.args)
 
-def send_command(*cmd):
-    print(f"\n{PRODLOG_CMD_PREFIX}{";".join(cmd)};")
+def send_command(cmd, *args):
+    encoded_args = [base64.b64encode(arg.encode()).decode() + ';' for arg in args]
+    print(f"\n{PRODLOG_CMD_PREFIX}{cmd};{''.join(encoded_args)}")
+
 
 def run_command(command):
     try:
