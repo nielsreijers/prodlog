@@ -7,6 +7,7 @@ import os
 import argparse
 import re
 import pyte
+import pytz
 
 app = Flask(__name__)
 
@@ -40,7 +41,7 @@ with open(templates_dir / 'index.html', 'w') as f:
             margin: 10px 0; 
             border-radius: 4px;
         }
-        .timestamp { color: #666; }
+        .start_time { color: #666; }
         .command { font-family: monospace; }
         input, select { 
             padding: 5px;
@@ -156,13 +157,13 @@ with open(templates_dir / 'index.html', 'w') as f:
     <div class="list-view">
         {% for entry in entries %}
         <div class="entry">
-            <div class="timestamp">{{ entry.start_time }}</div>
+            <div class="start_time">{{ format_datetime(entry.start_time) }}</div>
             <div><strong>Host:</strong> {{ entry.host }}</div>
             <div><strong>Command:</strong> <span class="command">{{ entry.command }}</span></div>
             <div><strong>Duration:</strong> {{ entry.duration_ms }}ms</div>
             <div>
                 <strong>Output:</strong> 
-                <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
+                <a href="{{ url_for('view_output', filepath=entry.log_filename) }}" class="output-link">View Output</a>
             </div>
             {% if entry.output_preview %}
             <div class="output-preview">{{ entry.output_preview | safe }}</div>
@@ -175,7 +176,7 @@ with open(templates_dir / 'index.html', 'w') as f:
         <table>
             <thead>
                 <tr>
-                    <th>Timestamp</th>
+                    <th>Start Time</th>
                     <th>Host</th>
                     <th>Command</th>
                     <th>Duration</th>
@@ -185,12 +186,12 @@ with open(templates_dir / 'index.html', 'w') as f:
             <tbody>
                 {% for entry in entries %}
                 <tr>
-                    <td>{{ entry.start_time }}</td>
+                    <td>{{ format_datetime(entry.start_time) }}</td>
                     <td>{{ entry.host }}</td>
                     <td class="command">{{ entry.command }}</td>
                     <td>{{ entry.duration_ms }}ms</td>
                     <td>
-                        <a href="{{ url_for('view_output', filepath=entry.output_file) }}" class="output-link">View Output</a>
+                        <a href="{{ url_for('view_output', filepath=entry.log_filename) }}" class="output-link">View Output</a>
                         {% if entry.output_preview %}
                         <div class="output-preview">{{ entry.output_preview | safe }}</div>
                         {% endif %}
@@ -294,6 +295,13 @@ def ansi_to_html(text):
 
     return result
 
+def format_datetime(iso_string):
+    try:
+        dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+    except ValueError:
+        return iso_string
+
 @app.route('/')
 def index():
     data = load_json_data()
@@ -308,7 +316,7 @@ def index():
     if date_filter:
         entries = [
             e for e in entries 
-            if e['timestamp'].startswith(date_filter)
+            if e['start_time'].startswith(date_filter)
         ]
     if host_filter:
         entries = [
@@ -325,7 +333,7 @@ def index():
     if output_filter:
         filtered_entries = []
         for entry in entries:
-            output_content = get_output_content(entry['output_file'])
+            output_content = get_output_content(entry['log_filename'])
             if output_filter.lower() in output_content.lower():
                 # Find the context around the match
                 idx = output_content.lower().find(output_filter.lower())
@@ -353,10 +361,10 @@ def index():
                 filtered_entries.append(entry)
         entries = filtered_entries
 
-    # Sort entries by timestamp, newest first
-    entries.sort(key=lambda x: x['timestamp'], reverse=True)
+    # Sort entries by start_time, newest first
+    entries.sort(key=lambda x: x['start_time'], reverse=True)
 
-    return render_template('index.html', entries=entries)
+    return render_template('index.html', entries=entries, format_datetime=format_datetime)
 
 @app.route('/output/<path:filepath>')
 def view_output(filepath):
