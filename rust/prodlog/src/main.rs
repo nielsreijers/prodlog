@@ -186,6 +186,7 @@ impl StdoutHandler {
             Duration: {duration_ms}ms\n\
             ```\n\
             Output:   [[{log_filename}]]\n\
+            \n\
             ---\n\
             ");
 
@@ -222,8 +223,6 @@ impl StdoutHandler {
         state.log_by_host.flush()?;
         state.log_all_hosts.flush()?;
 
-        
-        
         Ok(())
     }
 
