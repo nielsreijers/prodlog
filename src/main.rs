@@ -99,7 +99,7 @@ impl StdoutHandler {
     }
 
     fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
-        write!(out, "{}", format_prodlog_message(msg));
+        write!(out, "{}", format_prodlog_message(msg))?;
         out.flush()?;
         Ok(())
     }
@@ -126,7 +126,7 @@ impl StdoutHandler {
             Ok(bytes) => String::from_utf8(bytes).unwrap(),
             Err(e) => {
                 println!("Error decoding base64: {}", e);
-                data.to_string() // Shouldn't happen, but if it does, just return the original string.   
+                data.to_string() // Shouldn't happen, but if it does, just return the original string.
             }
         }
     }
