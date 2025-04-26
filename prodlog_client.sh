@@ -28,7 +28,10 @@ send_command() {
 # Function to print help message
 print_help() {
     echo "Usage: $0 run <command> [args...]"
-    echo "Record shell output by wrapping a command."
+    echo "Record a command and its output in prodlog. An instance of prodlog_server must be running."
+    echo ""
+    echo "Testing if prodlog_server is running:"
+    send_command "$CMD_IS_INACTIVE"
 }
 
 # --- Main Script Logic ---
@@ -36,7 +39,6 @@ print_help() {
 # Check if the first argument is 'run'
 if [[ "$1" != "run" ]]; then
     print_help
-    send_command "$CMD_IS_INACTIVE"
     exit 1
 fi
 

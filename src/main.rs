@@ -128,7 +128,13 @@ impl StdoutHandler {
     }
 
     fn get_short_command(cmd: &str) -> String {
-        cmd.split_whitespace().next().unwrap().to_string()
+        let mut words = cmd.split_whitespace();
+        let first_word = words.next().unwrap_or("");
+        if first_word == "sudo" {
+            format!("{} {}", first_word, words.next().unwrap_or(""))
+        } else {
+            first_word.to_string()
+        }
     }
 
     fn base64_decode(&self, data: &str) -> String {
