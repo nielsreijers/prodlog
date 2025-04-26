@@ -68,6 +68,21 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
         button:hover {{
             background-color: #45a049;
         }}
+        .output-preview {{
+            font-family: monospace;
+            margin-top: 5px;
+            padding: 5px;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            max-height: 100px;
+            overflow-y: auto;
+        }}
+        .match-highlight {{
+            background-color: #fff3cd;
+            padding: 2px;
+        }}
     </style>
 </head>
 <body>
@@ -107,6 +122,13 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
     )
 }
 
+fn highlight_matches(text: &str, search_term: &str) -> String {
+    if search_term.is_empty() {
+        return text.to_string();
+    }
+    text.replace(search_term, &format!("<span class=\"match-highlight\">{}</span>", search_term))
+}
+
 async fn index(
     State(state): State<Arc<PathBuf>>,
     Query(filters): Query<Filters>,
@@ -125,52 +147,85 @@ async fn index(
     };
 
     // Filter entries
-    let filtered_entries: Vec<&LogEntry> = data.entries.iter()
-        .filter(|entry| {
-            // Date filter
-            if let Some(date) = &filters.date {
-                if !entry.start_time.starts_with(date) {
-                    return false;
-                }
+    let mut filtered_entries = Vec::new();
+    
+    for entry in &data.entries {
+        // Apply date, host, and command filters
+        if let Some(date) = &filters.date {
+            if !entry.start_time.starts_with(date) {
+                continue;
             }
-            
-            // Host filter
-            if let Some(host) = &filters.host {
-                if !entry.host.to_lowercase().contains(&host.to_lowercase()) {
-                    return false;
-                }
+        }
+        
+        if let Some(host) = &filters.host {
+            if !entry.host.to_lowercase().contains(&host.to_lowercase()) {
+                continue;
             }
-            
-            // Command filter
-            if let Some(command) = &filters.command {
-                if !entry.command.to_lowercase().contains(&command.to_lowercase()) {
-                    return false;
-                }
+        }
+        
+        if let Some(command) = &filters.command {
+            if !entry.command.to_lowercase().contains(&command.to_lowercase()) {
+                continue;
             }
+        }
 
-            // Output filter would go here, but it requires reading the log files
-            // We can add that later if needed
-
-            true
-        })
-        .collect();
+        // Check output content if output filter is present
+        if let Some(output_filter) = &filters.output {
+            if !output_filter.is_empty() {
+                let log_path = state.join(&entry.log_filename);
+                if let Ok(content) = fs::read_to_string(log_path).await {
+                    if !content.to_lowercase().contains(&output_filter.to_lowercase()) {
+                        continue;
+                    }
+                    // Add preview of matching content
+                    let idx = content.to_lowercase().find(&output_filter.to_lowercase()).unwrap();
+                    let start = idx.saturating_sub(50);
+                    let end = (idx + output_filter.len() + 50).min(content.len());
+                    let preview = content[start..end].to_string();
+                    filtered_entries.push((entry, Some(preview)));
+                    continue;
+                }
+            }
+        }
+        
+        filtered_entries.push((entry, None));
+    }
 
     // Generate table rows
     let rows = filtered_entries.iter()
-        .map(|entry| format!(
-            r#"<tr>
-                <td>{}</td>
-                <td>{}</td>
-                <td>{}</td>
-                <td>{}ms</td>
-                <td><a href="/output/{}">View</a></td>
-            </tr>"#,
-            entry.start_time,
-            entry.host,
-            entry.command,
-            entry.duration_ms,
-            entry.log_filename
-        ))
+        .map(|(entry, preview)| {
+            let preview_html = if let Some(preview) = preview {
+                if let Some(output_filter) = &filters.output {
+                    format!(
+                        r#"<div class="output-preview">{}</div>"#,
+                        highlight_matches(preview, output_filter)
+                    )
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            format!(
+                r#"<tr>
+                    <td>{}</td>
+                    <td>{}</td>
+                    <td>{}</td>
+                    <td>{}ms</td>
+                    <td>
+                        <a href="/output/{}">View</a>
+                        {}
+                    </td>
+                </tr>"#,
+                entry.start_time,
+                entry.host,
+                entry.command,
+                entry.duration_ms,
+                entry.log_filename,
+                preview_html
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
