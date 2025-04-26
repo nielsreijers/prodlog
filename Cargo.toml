@@ -4,9 +4,12 @@ version = "2.0.0"
 edition = "2021"
 
 [dependencies]
+askama = "0.12"
+axum = "0.7"
 base64 = "0.22.1"
-chrono = "0.4.40"
+chrono = { version = "0.4.40", features = ["serde"] }
 clap = { version = "4.5.37", features = ["derive"] }
+dirs = "5.0"
 libc = "0.2.172"
 nix = { version = "0.29.0", features = ["fs", "ioctl", "process", "term"] }
 serde = { version = "1.0.219", features = ["derive"] }

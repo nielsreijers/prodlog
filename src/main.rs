@@ -18,6 +18,8 @@ use std::fs;
 use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
 
+mod ui;
+
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
 const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
 const CMD_ARE_YOU_RUNNING: &str = "PRODLOG, ARE YOU RUNNING?";
@@ -416,7 +418,7 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
 }
 
 async fn run_parent(
-    cli_args: CliArgs,
+    cli_args: &CliArgs,
     child: nix::unistd::Pid,
     master: std::os::fd::OwnedFd
 ) -> Result<(), std::io::Error> {
@@ -495,9 +497,16 @@ async fn run_parent(
 async fn main() {
     let cli_args = CliArgs::parse();
     println!("prodlog logging to {:?}", cli_args.dir);
+
+    let prodlog_dir = cli_args.dir.clone();
+    tokio::spawn(async move {
+        ui::run_ui(&prodlog_dir).await;
+    });
+
+
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
-        ForkptyResult::Parent { child, master } => { run_parent(cli_args, child, master).await }
+        ForkptyResult::Parent { child, master } => { run_parent(&cli_args, child, master).await }
     };
     if let Err(e) = result {
         eprintln!("PRODLOG EXITING WITH ERROR: {}", e);
