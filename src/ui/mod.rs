@@ -63,6 +63,38 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             max-width: 1200px;
             margin: 0 auto;
             padding: 2rem;
+            transition: max-width 0.3s ease;
+        }}
+        .container.full-width {{
+            max-width: none;
+            padding: 2rem;
+        }}
+        .header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }}
+        .view-toggle {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--proton-blue);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }}
+        .view-toggle:hover {{
+            background-color: var(--proton-blue-hover);
+        }}
+        .view-toggle svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
         }}
         h1 {{
             color: var(--proton-text);
@@ -170,8 +202,16 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Prodlog Viewer</h1>
+    <div class="container" id="container">
+        <div class="header">
+            <h1>Prodlog Viewer</h1>
+            <button class="view-toggle" onclick="toggleWidth()" title="Toggle width">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 4h16M4 20h16M4 12h16"/>
+                </svg>
+                <span class="toggle-text">Full Width</span>
+            </button>
+        </div>
         <div class="filters">
             <form method="get">
                 <input type="date" name="date" value="{0}">
@@ -197,6 +237,26 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             </tbody>
         </table>
     </div>
+    <script>
+        function toggleWidth() {{
+            const container = document.getElementById('container');
+            const toggleText = document.querySelector('.toggle-text');
+            container.classList.toggle('full-width');
+            toggleText.textContent = container.classList.contains('full-width') ? 'Column Width' : 'Full Width';
+            // Store preference in localStorage
+            localStorage.setItem('fullWidth', container.classList.contains('full-width'));
+        }}
+        
+        // Restore preference on page load
+        document.addEventListener('DOMContentLoaded', () => {{
+            const container = document.getElementById('container');
+            const toggleText = document.querySelector('.toggle-text');
+            if (localStorage.getItem('fullWidth') === 'true') {{
+                container.classList.add('full-width');
+                toggleText.textContent = 'Column Width';
+            }}
+        }});
+    </script>
 </body>
 </html>
 "#, 
