@@ -770,7 +770,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prodlog_server"
+name = "prodlog"
 version = "2.0.0"
 dependencies = [
  "askama",
