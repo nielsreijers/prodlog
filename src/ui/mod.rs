@@ -42,77 +42,160 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
 <head>
     <title>Prodlog Viewer</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .filters {{ margin-bottom: 20px; }}
-        table {{ 
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+        :root {{
+            --proton-blue: #6D4AFF;
+            --proton-blue-hover: #7B5AFF;
+            --proton-background: #FFFFFF;
+            --proton-text: #1C1B1F;
+            --proton-text-secondary: #4E4B66;
+            --proton-border: #E5E7EB;
+            --proton-hover: #F5F5F5;
         }}
-        th, td {{ 
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
+        body {{ 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--proton-background);
+            color: var(--proton-text);
         }}
-        th {{ background-color: #f5f5f5; }}
-        input, select {{ 
-            padding: 5px;
-            margin-right: 10px;
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }}
+        h1 {{
+            color: var(--proton-text);
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }}
+        .filters {{
+            background-color: var(--proton-background);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }}
+        .filters form {{
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }}
+        input, select {{
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--proton-border);
+            border-radius: 8px;
+            font-size: 0.875rem;
+            color: var(--proton-text);
+            background-color: var(--proton-background);
+            transition: all 0.2s ease;
+        }}
+        input:focus, select:focus {{
+            outline: none;
+            border-color: var(--proton-blue);
+            box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
         }}
         button {{
-            padding: 5px 10px;
-            background-color: #4CAF50;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--proton-blue);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
         }}
         button:hover {{
-            background-color: #45a049;
+            background-color: var(--proton-blue-hover);
+        }}
+        button[type="button"] {{
+            background-color: transparent;
+            color: var(--proton-text);
+            border: 1px solid var(--proton-border);
+        }}
+        button[type="button"]:hover {{
+            background-color: var(--proton-hover);
+        }}
+        table {{
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 1rem;
+            background-color: var(--proton-background);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }}
+        th, td {{
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--proton-border);
+        }}
+        th {{
+            background-color: var(--proton-hover);
+            font-weight: 600;
+            color: var(--proton-text-secondary);
+        }}
+        tr:hover {{
+            background-color: var(--proton-hover);
+        }}
+        a {{
+            color: var(--proton-blue);
+            text-decoration: none;
+            font-weight: 500;
+        }}
+        a:hover {{
+            text-decoration: underline;
         }}
         .output-preview {{
-            font-family: monospace;
-            margin-top: 5px;
-            padding: 5px;
-            background-color: #f8f8f8;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background-color: var(--proton-hover);
+            border: 1px solid var(--proton-border);
+            border-radius: 8px;
             white-space: pre-wrap;
             max-height: 100px;
             overflow-y: auto;
+            font-size: 0.875rem;
         }}
         .match-highlight {{
-            background-color: #fff3cd;
-            padding: 2px;
+            background-color: rgba(109, 74, 255, 0.1);
+            color: var(--proton-blue);
+            padding: 0.125rem 0.25rem;
+            border-radius: 4px;
         }}
     </style>
 </head>
 <body>
-    <h1>Prodlog Viewer</h1>
-    <div class="filters">
-        <form method="get">
-            <input type="date" name="date" value="{0}">
-            <input type="text" name="host" placeholder="Hostname" value="{1}">
-            <input type="text" name="command" placeholder="Command" value="{2}">
-            <input type="text" name="output" placeholder="Search in output" value="{3}">
-            <button type="submit">Filter</button>
-            <button type="button" onclick="window.location.href='/'">Clear</button>
-        </form>
+    <div class="container">
+        <h1>Prodlog Viewer</h1>
+        <div class="filters">
+            <form method="get">
+                <input type="date" name="date" value="{0}">
+                <input type="text" name="host" placeholder="Hostname" value="{1}">
+                <input type="text" name="command" placeholder="Command" value="{2}">
+                <input type="text" name="output" placeholder="Search in output" value="{3}">
+                <button type="submit">Filter</button>
+                <button type="button" onclick="window.location.href='/'">Clear</button>
+            </form>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Host</th>
+                    <th>Command</th>
+                    <th>Duration</th>
+                    <th>Log</th>
+                </tr>
+            </thead>
+            <tbody>
+                {4}
+            </tbody>
+        </table>
     </div>
-    <table>
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Host</th>
-                <th>Command</th>
-                <th>Duration</th>
-                <th>Log</th>
-            </tr>
-        </thead>
-        <tbody>
-            {4}
-        </tbody>
-    </table>
 </body>
 </html>
 "#, 
@@ -248,39 +331,64 @@ fn generate_output_html(content: &str, output_filter: Option<&str>) -> String {
 <head>
     <title>Output View</title>
     <style>
+        :root {{
+            --proton-blue: #6D4AFF;
+            --proton-background: #1C1B1F;
+            --proton-text: #FFFFFF;
+            --proton-text-secondary: #A0A0A0;
+            --proton-border: #2D2D2D;
+        }}
         body {{ 
-            font-family: monospace; 
-            margin: 20px; 
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            margin: 0;
+            padding: 0;
+            background-color: var(--proton-background);
+            color: var(--proton-text);
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
         }}
         pre {{ 
             white-space: pre-wrap;
             margin: 0;
-            padding: 10px;
+            padding: 1.5rem;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            font-size: 0.875rem;
+            line-height: 1.5;
         }}
         .back-link {{ 
-            margin-bottom: 20px; 
+            margin-bottom: 1.5rem; 
         }}
         .back-link a {{
-            color: #4CAF50;
+            color: var(--proton-text-secondary);
             text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            transition: color 0.2s ease;
         }}
         .back-link a:hover {{
-            text-decoration: underline;
+            color: var(--proton-text);
         }}
         .match-highlight {{ 
-            background-color: #fff3cd; 
-            color: #000;
-            padding: 2px; 
+            background-color: rgba(109, 74, 255, 0.2);
+            color: var(--proton-text);
+            padding: 0.125rem 0.25rem;
+            border-radius: 4px;
         }}
     </style>
 </head>
 <body>
-    <div class="back-link">
-        <a href="/">← Back to list</a>
+    <div class="container">
+        <div class="back-link">
+            <a href="/">← Back to list</a>
+        </div>
+        <pre>{}</pre>
     </div>
-    <pre>{}</pre>
 </body>
 </html>
     "#, highlighted_content)
