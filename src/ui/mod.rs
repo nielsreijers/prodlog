@@ -10,6 +10,8 @@ use std::sync::Arc;
 use tokio::fs;
 use urlencoding;
 
+mod ansi_to_html;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LogEntry {
     start_time: String,
@@ -306,7 +308,8 @@ async fn view_output(
         Err(_) => String::from("File not found"),
     };
 
-    Html(generate_output_html(&content, filters.output.as_deref()))
+    let html_content = ansi_to_html::ansi_to_html(&content);
+    Html(generate_output_html(&html_content, filters.output.as_deref()))
 }
 
 pub async fn run_ui(log_dir: &PathBuf) {
