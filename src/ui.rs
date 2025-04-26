@@ -2,13 +2,13 @@ use axum::{
     routing::get,
     Router,
     response::Html,
-    extract::{State, Query},
-    serve,
+    extract::{State, Query, Path},
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
+use urlencoding;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LogEntry {
@@ -194,6 +194,7 @@ async fn index(
     // Generate table rows
     let rows = filtered_entries.iter()
         .map(|(entry, preview)| {
+            let encoded_path = urlencoding::encode(&entry.log_filename);
             let preview_html = if let Some(preview) = preview {
                 if let Some(output_filter) = &filters.output {
                     format!(
@@ -222,7 +223,7 @@ async fn index(
                 entry.host,
                 entry.command,
                 entry.duration_ms,
-                entry.log_filename,
+                encoded_path,
                 preview_html
             )
         })
@@ -232,11 +233,88 @@ async fn index(
     Html(generate_html(&rows, &filters))
 }
 
-pub async fn run_ui(log_dir: &PathBuf) {
-    let app_state = Arc::new(log_dir.clone());
+fn generate_output_html(content: &str, output_filter: Option<&str>) -> String {
+    let highlighted_content = if let Some(filter) = output_filter {
+        highlight_matches(content, filter)
+    } else {
+        content.to_string()
+    };
+
+    format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Output View</title>
+    <style>
+        body {{ 
+            font-family: monospace; 
+            margin: 20px; 
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }}
+        pre {{ 
+            white-space: pre-wrap;
+            margin: 0;
+            padding: 10px;
+        }}
+        .back-link {{ 
+            margin-bottom: 20px; 
+        }}
+        .back-link a {{
+            color: #4CAF50;
+            text-decoration: none;
+        }}
+        .back-link a:hover {{
+            text-decoration: underline;
+        }}
+        .match-highlight {{ 
+            background-color: #fff3cd; 
+            color: #000;
+            padding: 2px; 
+        }}
+    </style>
+</head>
+<body>
+    <div class="back-link">
+        <a href="/">← Back to list</a>
+    </div>
+    <pre>{}</pre>
+</body>
+</html>
+    "#, highlighted_content)
+}
+
+async fn view_output(
+    State(state): State<Arc<PathBuf>>,
+    Path(filepath): Path<String>,
+    Query(filters): Query<Filters>,
+) -> Html<String> {
+    // URL decode the filepath
+    let decoded_path = urlencoding::decode(&filepath)
+        .unwrap_or(std::borrow::Cow::from(&filepath))
+        .into_owned();
     
+    let file_path = state.join(decoded_path);
+    
+    // Security check to prevent directory traversal
+    if !file_path.starts_with(&*state) {
+        return Html(String::from("Access denied"));
+    }
+    
+    let content = match fs::read_to_string(file_path).await {
+        Ok(content) => content,
+        Err(_) => String::from("File not found"),
+    };
+
+    Html(generate_output_html(&content, filters.output.as_deref()))
+}
+
+pub async fn run_ui(log_dir: &PathBuf) {
+    let app_state = Arc::new(log_dir.clone()); 
+   
     let app = Router::new()
         .route("/", get(index))
+        .route("/output/:filepath", get(view_output))
         .with_state(app_state);
 
     println!("Starting web UI on http://localhost:3000");
