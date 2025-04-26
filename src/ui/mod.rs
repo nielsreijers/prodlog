@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
 use urlencoding;
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::DateTime;
 
 mod ansi_to_html;
 
@@ -489,7 +489,7 @@ async fn view_output(
     Html(generate_output_html(&html_content, filters.output.as_deref()))
 }
 
-pub async fn run_ui(log_dir: &PathBuf) {
+pub async fn run_ui(log_dir: &PathBuf, port: u16) {
     let app_state = Arc::new(log_dir.clone()); 
    
     let app = Router::new()
@@ -497,8 +497,18 @@ pub async fn run_ui(log_dir: &PathBuf) {
         .route("/output/:filepath", get(view_output))
         .with_state(app_state);
 
-    println!("Starting web UI on http://localhost:3000");
-    
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let addr = format!("0.0.0.0:{}", port);    
+    match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => {
+            // TODO: this printing could be prettier
+            super::print_prodlog_message(&format!("Starting web UI on http://localhost:{}", port));
+            axum::serve(listener, app).await.unwrap();
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            super::print_prodlog_message(&format!("Port {} is already in use. Another instance of prodlog might be running.", port));
+        }
+        Err(e) => {
+            super::print_prodlog_message(&format!("Failed to start web UI: {}", e));
+        }
+    }
 }

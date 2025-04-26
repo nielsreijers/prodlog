@@ -35,6 +35,10 @@ struct CliArgs {
     #[arg(long, value_name = "DIR", default_value = "/home/niels/tmp/prodlog")]
     dir: PathBuf,
 
+    /// Sets the port for the web UI.
+    #[arg(long, value_name = "PORT", default_value = "5000")]
+    port: u16,
+
     // Add other command-line arguments here if needed
 }
 
@@ -83,6 +87,11 @@ struct StdoutHandler {
     child_stdin_tx: mpsc::Sender<Vec<u8>>,
     capturing: Option<CaptureState>,
     state: StdoutHandlerState,
+}
+
+// TODO unify these different ways of printing messages
+fn print_prodlog_message(msg: &str) {
+    println!("{}\n\r", format_prodlog_message(msg));
 }
 
 fn format_prodlog_message(msg: &str) -> String {
@@ -498,11 +507,15 @@ async fn main() {
     let cli_args = CliArgs::parse();
     println!("prodlog logging to {:?}", cli_args.dir);
 
-    let prodlog_dir = cli_args.dir.clone();
+    // Create the directory if it doesn't exist
+    fs::create_dir_all(&cli_args.dir).expect("Failed to create directory");
+    
+    // Start the UI in a separate task
+    let ui_dir = cli_args.dir.clone();
+    let ui_port = cli_args.port;
     tokio::spawn(async move {
-        ui::run_ui(&prodlog_dir).await;
+        ui::run_ui(&ui_dir, ui_port).await;
     });
-
 
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
