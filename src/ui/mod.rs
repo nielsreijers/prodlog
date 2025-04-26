@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
 use urlencoding;
+use chrono::{DateTime, Utc, NaiveDateTime};
 
 mod ansi_to_html;
 
@@ -214,6 +215,14 @@ fn highlight_matches(text: &str, search_term: &str) -> String {
     text.replace(search_term, &format!("<span class=\"match-highlight\">{}</span>", search_term))
 }
 
+fn format_timestamp(timestamp: &str) -> String {
+    if let Ok(dt) = DateTime::parse_from_rfc3339(timestamp) {
+        dt.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+    } else {
+        timestamp.to_string()
+    }
+}
+
 async fn index(
     State(state): State<Arc<PathBuf>>,
     Query(filters): Query<Filters>,
@@ -304,7 +313,7 @@ async fn index(
                         {}
                     </td>
                 </tr>"#,
-                entry.start_time,
+                format_timestamp(&entry.start_time),
                 entry.host,
                 entry.command,
                 entry.duration_ms,
