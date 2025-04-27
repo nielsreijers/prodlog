@@ -17,6 +17,7 @@ use serde::{Serialize, Deserialize};
 use std::fs;
 use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
+use dirs;
 
 mod ui;
 
@@ -32,7 +33,7 @@ const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
 #[command(author, version, about, long_about = None)] // Add metadata
 struct CliArgs {
     /// Sets the directory for production logs.
-    #[arg(long, value_name = "DIR", default_value = "/home/niels/tmp/prodlog")]
+    #[arg(long, value_name = "DIR", default_value = ".local/share/prodlog")]
     dir: PathBuf,
 
     /// Sets the port for the web UI.
@@ -433,7 +434,7 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
 }
 
 async fn run_parent(
-    cli_args: &CliArgs,
+    prodlog_dir: &PathBuf,
     child: nix::unistd::Pid,
     master: std::os::fd::OwnedFd
 ) -> Result<(), std::io::Error> {
@@ -472,7 +473,7 @@ async fn run_parent(
     });
 
     // Start forwarding the child's stdout to our stdout.
-    let prodlog_dir = cli_args.dir.clone();
+    let prodlog_dir = prodlog_dir.clone();
     let _forward_stdout = tokio::task::spawn_blocking(move || {
         let mut buffer = [0; 1024];
         let mut stream_handler = StdoutHandler::new(prodlog_dir, child_stdin_tx2, raw_stdout);
@@ -511,13 +512,23 @@ async fn run_parent(
 #[tokio::main]
 async fn main() {
     let cli_args = CliArgs::parse();
-    println!("prodlog logging to {:?}", cli_args.dir);
+    
+    // Get the log directory path
+    let prodlog_dir = if cli_args.dir.is_absolute() {
+        cli_args.dir.clone()
+    } else {
+        // For relative paths, prepend the home directory
+        let home_dir = dirs::home_dir().expect("Could not determine home directory");
+        home_dir.join(&cli_args.dir)
+    };
+    print_prodlog_message(&format!("prodlog logging to {:?}", prodlog_dir));
 
+    
     // Create the directory if it doesn't exist
-    fs::create_dir_all(&cli_args.dir).expect("Failed to create directory");
+    fs::create_dir_all(&prodlog_dir).expect("Failed to create directory");
     
     // Start the UI in a separate task
-    let ui_dir = cli_args.dir.clone();
+    let ui_dir = prodlog_dir.clone();
     let ui_port = cli_args.port;
     tokio::spawn(async move {
         ui::run_ui(&ui_dir, ui_port).await;
@@ -525,7 +536,7 @@ async fn main() {
 
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
-        ForkptyResult::Parent { child, master } => { run_parent(&cli_args, child, master).await }
+        ForkptyResult::Parent { child, master } => { run_parent(&prodlog_dir, child, master).await }
     };
     if let Err(e) = result {
         eprintln!("PRODLOG EXITING WITH ERROR: {}", e);
