@@ -19,10 +19,10 @@ send_command() {
     local arg
     for arg in "$@"; do
         # Use base64 -w0 to prevent line wrapping
+        encoded_args+=':'
         encoded_args+=$(echo -n "$arg" | base64 -w0)
-        encoded_args+=';'
     done
-    printf "\n%s%s;%s\n" "$PRODLOG_CMD_PREFIX" "$cmd" "$encoded_args"
+    printf "\n%s%s%s;\n" "$PRODLOG_CMD_PREFIX" "$cmd" "$encoded_args"
 }
 
 # Function to print help message
@@ -79,13 +79,12 @@ cmd_str="$*" # Capture the command and arguments as a single string
 # Send start marker
 send_command "$CMD_START_CAPTURE" "$hostname" "$cwd" "$cmd_str"
 
-# Execute the command, passing remaining arguments
-# The trap ensures STOP_CAPTURE is sent even if the command fails
-trap 'send_command "$CMD_STOP_CAPTURE"' EXIT
+# Trap function
+on_exit() {
+    exit_status=$?
+    send_command "$CMD_STOP_CAPTURE" "$exit_status"
+    exit $exit_status
+}
+trap on_exit EXIT
 
 "$@"
-exit_status=$?
-
-# Note: The trap handles sending STOP_CAPTURE upon exit
-
-exit $exit_status

@@ -20,6 +20,7 @@ pub struct LogEntry {
     command: String,
     duration_ms: u64,
     log_filename: String,
+    exit_code: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -199,6 +200,9 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             padding: 0.125rem 0.25rem;
             border-radius: 4px;
         }}
+        tr.error-row {{
+            background-color: #ffeaea !important;
+        }}
     </style>
 </head>
 <body>
@@ -229,6 +233,7 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
                     <th>Host</th>
                     <th>Command</th>
                     <th>Duration</th>
+                    <th>Exit</th>
                     <th>Log</th>
                 </tr>
             </thead>
@@ -361,22 +366,25 @@ async fn index(
             } else {
                 String::new()
             };
-
+            let row_class = if entry.exit_code != 0 { " class=\"error-row\"" } else { "" };
             format!(
-                r#"<tr>
+                r#"<tr{}>
                     <td>{}</td>
                     <td>{}</td>
                     <td>{}</td>
                     <td>{}ms</td>
+                    <td>{}</td>
                     <td>
-                        <a href="/output/{}">View</a>
+                        <a href="{}">View</a>
                         {}
                     </td>
                 </tr>"#,
+                row_class,
                 format_timestamp(&entry.start_time),
                 entry.host,
                 entry.command,
                 entry.duration_ms,
+                entry.exit_code,
                 encoded_path,
                 preview_html
             )

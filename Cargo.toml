@@ -6,8 +6,8 @@ authors = ["Niels Reijers <prodlog@mail.nielsreijers.com>"]
 description = "A tool for logging and viewing terminal output with a web interface"
 license = "MIT"
 repository = "https://github.com/nielsreijers/prodlog"
-keywords = ["terminal", "logging", "web", "ui"]
-categories = ["command-line-utilities", "web-programming"]
+keywords = ["terminal", "logging"]
+categories = ["command-line-utilities"]
 readme = "README.md"
 
 [[bin]]

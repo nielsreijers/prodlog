@@ -52,6 +52,7 @@ struct ProdlogEntry {
     duration_ms: u64,
     log_filename: String,
     prodlog_version: String,
+    exit_code: i32,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,7 +62,7 @@ struct ProdlogData {
 
 enum StreamState {
     InProgress(String),
-    Completed(String, usize)
+    Completed(String, Vec<String>, usize)
 }
 
 struct CaptureState {
@@ -78,9 +79,6 @@ enum StdoutHandlerState {
     Normal,
     MatchingPrefix(usize),
     ReadingProdlogCommand(StreamState),
-    InitCaptureHost(StreamState),
-    InitCaptureCwd(String, StreamState),
-    InitCaptureCmd(String, String, StreamState),
 }
 struct StdoutHandler {
     prodlog_dir: PathBuf,
@@ -193,7 +191,7 @@ impl StdoutHandler {
         })
     }
 
-    fn stop_capturing(prodlog_dir: &PathBuf, state: &mut CaptureState) -> Result<(), std::io::Error> {
+    fn stop_capturing(prodlog_dir: &PathBuf, state: &mut CaptureState, exit_code: i32) -> Result<(), std::io::Error> {
         std::fs::create_dir_all(prodlog_dir).unwrap();
 
         let end_time = Utc::now();
@@ -214,6 +212,7 @@ impl StdoutHandler {
             Command:  {cmd_long}\n\
             End:      {formatted_end_long}\n\
             Duration: {duration_ms}ms\n\
+            ExitCode: {exit_code}\n\
             ```\n\
             Output:   [[{log_filename}]]\n\
             \n\
@@ -241,14 +240,15 @@ impl StdoutHandler {
             command: cmd_long.to_string(),
             log_filename: log_filename.to_string(),
             prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
+            exit_code,
         });
         fs::write(&json_path, serde_json::to_string_pretty(&prodlog_data)?)?;
-
 
         let footer = format!(
             "```\n\
             End:      {formatted_end_long}\n\
-            Duration: {duration_ms}ms\n");
+            Duration: {duration_ms}ms\n\
+            ExitCode: {exit_code}\n");
         state.log_by_host.write_all(footer.as_bytes())?;
         state.log_all_hosts.write_all(footer.as_bytes())?;
         state.log_by_host.flush()?;
@@ -270,7 +270,15 @@ impl StdoutHandler {
             } else {
                 // Skip terminator
                 pos += 1;
-                StreamState::Completed(new_value, pos)
+                let mut split = new_value.splitn(2, ':');
+                let cmd = split.next().unwrap_or("").to_string();
+                let rest = split.next().unwrap_or("");
+                let args: Vec<String> = if rest.is_empty() {
+                    Vec::new()
+                } else {
+                    rest.split(':').map(|s| self.base64_decode(s)).collect()
+                };
+                StreamState::Completed(cmd, args, pos)
             }
         } else {
             panic!("Invalid state");
@@ -323,7 +331,7 @@ impl StdoutHandler {
                             self.state = StdoutHandlerState::ReadingProdlogCommand(stream_state);
                             pos = n;
                         }
-                        StreamState::Completed(cmd, new_pos) => {
+                        StreamState::Completed(cmd, args, new_pos) => {
                             pos = new_pos;
                             match cmd.as_str() {
                                 CMD_IS_INACTIVE => {
@@ -337,15 +345,28 @@ impl StdoutHandler {
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_START_CAPTURE => {
-                                    self.state = StdoutHandlerState::InitCaptureHost(StreamState::InProgress("".to_string()));
-                                }
+                                    // TODO: error handling
+                                    if let (Some(client_host), Some(client_cwd), Some(client_cmd)) = (args.get(0), args.get(1), args.get(2)) {
+                                        Self::write_prodlog_message(&mut self.stdout, &format!("Starting capture of {} on {}:{}", client_cmd, client_host, client_cwd))?;
+                                        self.capturing = Some(Self::start_capturing(&self.prodlog_dir, client_host, client_cwd, client_cmd)?);
+                                        self.state = StdoutHandlerState::Normal;
+                                        pos = new_pos;
+                                    } else {
+                                        Self::write_prodlog_message(&mut self.stdout, "Error: Missing arguments for START CAPTURE")?;
+                                        self.state = StdoutHandlerState::Normal;
+                                    }
+                                },
                                 CMD_STOP_CAPTURE => {
+                                    let exit_code = args.get(0)
+                                        .and_then(|s| s.parse::<i32>().ok())
+                                        .unwrap_or(1000);
                                     if let Some(capture) = &mut self.capturing {
-                                        Self::write_prodlog_message(&mut self.stdout, &format!("Stopping capture of {} on {}:{}",
+                                        Self::write_prodlog_message(&mut self.stdout, &format!("Stopping capture of {} on {}:{} with exit code {}",
                                                                             capture.cmd,
                                                                             capture.host,
-                                                                            capture.cwd))?;
-                                        Self::stop_capturing(&self.prodlog_dir, capture)?;
+                                                                            capture.cwd,
+                                                                            exit_code))?;
+                                        Self::stop_capturing(&self.prodlog_dir, capture, exit_code)?;
                                     } else {
                                         Self::write_prodlog_message(&mut self.stdout, "Warning: Tried to stop capture, but no capture was active")?
                                     }
@@ -363,50 +384,6 @@ impl StdoutHandler {
                         }
                     }
                 },
-                StdoutHandlerState::InitCaptureHost(stream_state) => {
-                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
-                    match stream_state {
-                        StreamState::InProgress(_) => {
-                            self.state = StdoutHandlerState::InitCaptureHost(stream_state);
-                            pos = n;
-                        }
-                        StreamState::Completed(host, new_pos) => {
-                            let host = self.base64_decode(&host);
-                            self.state = StdoutHandlerState::InitCaptureCwd(host, StreamState::InProgress("".to_string()));
-                            pos = new_pos;
-                        }
-                    }
-                }
-                StdoutHandlerState::InitCaptureCwd(host, stream_state) => {
-                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
-                    match stream_state {
-                        StreamState::InProgress(_) => {
-                            self.state = StdoutHandlerState::InitCaptureCwd(host.to_string(), stream_state);
-                            pos = n;
-                        }
-                        StreamState::Completed(cwd, new_pos) => {
-                            let cwd = self.base64_decode(&cwd);
-                            self.state = StdoutHandlerState::InitCaptureCmd(host.to_string(), cwd, StreamState::InProgress("".to_string()));
-                            pos = new_pos;
-                        }
-                    }
-                }
-                StdoutHandlerState::InitCaptureCmd(host, cwd, stream_state) => {
-                    let stream_state = self.read_until_terminator(buffer, pos, n, &stream_state);
-                    match stream_state {
-                        StreamState::InProgress(_) => {
-                            self.state = StdoutHandlerState::InitCaptureCmd(host.to_string(), cwd.to_string(), stream_state);
-                            pos = n;
-                        }
-                        StreamState::Completed(cmd, new_pos) => {
-                            let cmd = self.base64_decode(&cmd);
-                            Self::write_prodlog_message(&mut self.stdout, &format!("Starting capture of {} on {}:{}", cmd, host, cwd))?;
-                            self.capturing = Some(Self::start_capturing(&self.prodlog_dir, host, cwd, &cmd)?);
-                            self.state = StdoutHandlerState::Normal;
-                            pos = new_pos;
-                        }
-                    }
-                }
             }
         }
         Ok(())
