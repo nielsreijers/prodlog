@@ -90,28 +90,18 @@ struct StdoutHandler {
 
 // TODO unify these different ways of printing messages
 fn print_prodlog_message(msg: &str) {
-    println!("{}\n\r", format_prodlog_message(msg));
-}
-
-fn format_prodlog_message(msg: &str) -> String {
-    format!("{}{}{}{}{}{}",
-            style::Bold,
-            color::Fg(color::Green),
-            style::Blink,
-            "PRODLOG: ",
-            style::Reset,
-            msg)
+    print!("{}\n\r", format!("{}{}{}{}{}{}",
+        style::Bold,
+        color::Fg(color::Green),
+        style::Blink,
+        "PRODLOG: ",
+        style::Reset,
+        msg));
 }
 
 impl StdoutHandler {
     fn new(prodlog_dir: PathBuf, child_stdin_tx: mpsc::Sender<Vec<u8>>, stdout: RawTerminal<Stdout>) -> Self {
         Self { prodlog_dir, child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal }
-    }
-
-    fn write_prodlog_message(out: &mut RawTerminal<Stdout>, msg: &str) -> Result<(), std::io::Error> {
-        write!(out, "{}", format_prodlog_message(msg))?;
-        out.flush()?;
-        Ok(())
     }
 
     fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error>  {
@@ -335,24 +325,24 @@ impl StdoutHandler {
                             pos = new_pos;
                             match cmd.as_str() {
                                 CMD_IS_INACTIVE => {
-                                    Self::write_prodlog_message(&mut self.stdout, "Prodlog is currently active!")?;
+                                    print_prodlog_message("Prodlog is currently active!");
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_ARE_YOU_RUNNING => {
                                     // TODO: figure out why async send doesn't work here. It works fine in run_parent. Are we deadlocking?
-                                    Self::write_prodlog_message(&mut self.stdout, "Telling server side prodlog recording is active:")?;
+                                    print_prodlog_message("Telling server side prodlog recording is active:");
                                     self.child_stdin_tx.blocking_send(REPLY_YES_PRODLOG_IS_RUNNING.to_vec()).unwrap();
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_START_CAPTURE => {
                                     // TODO: error handling
                                     if let (Some(client_host), Some(client_cwd), Some(client_cmd)) = (args.get(0), args.get(1), args.get(2)) {
-                                        Self::write_prodlog_message(&mut self.stdout, &format!("Starting capture of {} on {}:{}", client_cmd, client_host, client_cwd))?;
+                                        print_prodlog_message(&format!("Starting capture of {} on {}:{}", client_cmd, client_host, client_cwd));
                                         self.capturing = Some(Self::start_capturing(&self.prodlog_dir, client_host, client_cwd, client_cmd)?);
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     } else {
-                                        Self::write_prodlog_message(&mut self.stdout, "Error: Missing arguments for START CAPTURE")?;
+                                        print_prodlog_message("Error: Missing arguments for START CAPTURE");
                                         self.state = StdoutHandlerState::Normal;
                                     }
                                 },
@@ -361,14 +351,14 @@ impl StdoutHandler {
                                         .and_then(|s| s.parse::<i32>().ok())
                                         .unwrap_or(1000);
                                     if let Some(capture) = &mut self.capturing {
-                                        Self::write_prodlog_message(&mut self.stdout, &format!("Stopping capture of {} on {}:{} with exit code {}",
+                                        print_prodlog_message(&format!("Stopping capture of {} on {}:{} with exit code {}",
                                                                             capture.cmd,
                                                                             capture.host,
                                                                             capture.cwd,
-                                                                            exit_code))?;
+                                                                            exit_code));
                                         Self::stop_capturing(&self.prodlog_dir, capture, exit_code)?;
                                     } else {
-                                        Self::write_prodlog_message(&mut self.stdout, "Warning: Tried to stop capture, but no capture was active")?
+                                        print_prodlog_message("Warning: Tried to stop capture, but no capture was active");
                                     }
                                     self.capturing = None;
                                     self.state = StdoutHandlerState::Normal;
@@ -516,10 +506,10 @@ async fn main() {
         ForkptyResult::Parent { child, master } => { run_parent(&prodlog_dir, child, master).await }
     };
     if let Err(e) = result {
-        eprintln!("PRODLOG EXITING WITH ERROR: {}", e);
+        print_prodlog_message(&format!("PRODLOG EXITING WITH ERROR: {}", e));
         std::process::exit(1);
     } else {
-        println!("PRODLOG EXITING");
+        print_prodlog_message("PRODLOG EXITING");
         std::process::exit(0);
     }
 }
