@@ -13,13 +13,13 @@ use nix::unistd::execvp;
 use std::ffi::CString;
 use chrono::{DateTime, Utc};
 use termion::{color, style};
-use serde::{Serialize, Deserialize};
 use std::fs;
 use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
 use dirs;
 
 mod ui;
+mod sinks;
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
 const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
@@ -43,23 +43,6 @@ struct CliArgs {
     // Add other command-line arguments here if needed
 }
 
-#[derive(Serialize, Deserialize)]
-struct ProdlogEntry {
-    start_time: String,
-    host: String,
-    command: String,
-    end_time: String,
-    duration_ms: u64,
-    log_filename: String,
-    prodlog_version: String,
-    exit_code: i32,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ProdlogData {
-    entries: Vec<ProdlogEntry>,
-}
-
 enum StreamState {
     InProgress(String),
     Completed(String, Vec<String>, usize)
@@ -69,10 +52,8 @@ struct CaptureState {
     host: String,
     cwd: String,
     cmd: String,
-    log_filename_by_host: String,
-    log_by_host: File,
-    log_all_hosts: File,
     start_time: DateTime<Utc>,
+    captured_output: Vec<u8>,
 }
 
 enum StdoutHandlerState {
@@ -81,11 +62,11 @@ enum StdoutHandlerState {
     ReadingProdlogCommand(StreamState),
 }
 struct StdoutHandler {
-    prodlog_dir: PathBuf,
     stdout: RawTerminal<Stdout>,
     child_stdin_tx: mpsc::Sender<Vec<u8>>,
     capturing: Option<CaptureState>,
     state: StdoutHandlerState,
+    sinks: Vec<Box<dyn sinks::Sink>>,
 }
 
 // TODO unify these different ways of printing messages
@@ -100,30 +81,17 @@ fn print_prodlog_message(msg: &str) {
 }
 
 impl StdoutHandler {
-    fn new(prodlog_dir: PathBuf, child_stdin_tx: mpsc::Sender<Vec<u8>>, stdout: RawTerminal<Stdout>) -> Self {
-        Self { prodlog_dir, child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal }
+    fn new(child_stdin_tx: mpsc::Sender<Vec<u8>>, stdout: RawTerminal<Stdout>, sinks: Vec<Box<dyn sinks::Sink>>) -> Self {
+        Self { child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal, sinks }
     }
 
     fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error>  {
         self.stdout.write(buf)?;
         self.stdout.flush()?;
         if let Some(capture) = &mut self.capturing {
-            capture.log_by_host.write_all(buf)?;
-            capture.log_by_host.flush()?;
-            capture.log_all_hosts.write_all(buf)?;
-            capture.log_all_hosts.flush()?;
+            capture.captured_output.extend_from_slice(buf);
         }
         Ok(())
-    }
-
-    fn get_short_command(cmd: &str) -> String {
-        let mut words = cmd.split_whitespace();
-        let first_word = words.next().unwrap_or("");
-        if first_word == "sudo" {
-            format!("{} {}", first_word, words.next().unwrap_or(""))
-        } else {
-            first_word.to_string()
-        }
     }
 
     fn base64_decode(&self, data: &str) -> String {
@@ -137,112 +105,26 @@ impl StdoutHandler {
         }
     }
 
-    fn get_all_hosts_log_filename (start_time: DateTime<Utc>, host: &str, cmd: &str) -> String {
-        let formatted_time = start_time.format("%Y%m%d_%H%M%S").to_string();
-        let short_cmd = Self::get_short_command(cmd).replace(" ", "_");
-        format!("prodlog_output/all-hosts/{}-{}-{}.md", formatted_time, host, short_cmd)
-    }
 
-    fn get_by_host_log_filename (start_time: DateTime<Utc>, host: &str, cmd: &str) -> String {
-        let formatted_time = start_time.format("%Y%m%d_%H%M%S").to_string();
-        let short_cmd = Self::get_short_command(cmd).replace(" ", "_");
-        format!("prodlog_output/{}/{}-{}.md", host, formatted_time, short_cmd)
-    }
-
-    fn start_capturing(prodlog_dir: &PathBuf, host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
-        std::fs::create_dir_all(prodlog_dir.join(format!("prodlog_output/{}", host)))?;
-        std::fs::create_dir_all(prodlog_dir.join("prodlog_output/all-hosts"))?;
-        
+    fn start_capturing(host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
         let start_time = Utc::now();
-        let formatted_start_long = start_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
-        let log_filename_by_host = Self::get_by_host_log_filename(start_time, host, cmd);
-        let log_filename_all_hosts = Self::get_all_hosts_log_filename(start_time, host, cmd);
-        let mut log_by_host = File::create(prodlog_dir.join(log_filename_by_host.clone()))?;
-        let mut log_all_hosts = File::create(prodlog_dir.join(log_filename_all_hosts.clone()))?;
-
-        let header = format!(
-            "Host:     {host}\n\
-            Start:    {formatted_start_long}\n\
-            Command:  {cmd}\n\
-            Output:\n\
-            ```\n\
-            ");
-        log_by_host.write_all(header.as_bytes())?;
-        log_all_hosts.write_all(header.as_bytes())?;
 
         Ok(CaptureState {
             host: host.to_string(),
             cwd: cwd.to_string(),
             cmd: cmd.to_string(),
-            log_filename_by_host,
-            log_by_host,
-            log_all_hosts,
             start_time,
+            captured_output: Vec::new(),
         })
     }
 
-    fn stop_capturing(prodlog_dir: &PathBuf, state: &mut CaptureState, exit_code: i32) -> Result<(), std::io::Error> {
-        std::fs::create_dir_all(prodlog_dir).unwrap();
-
-        let end_time = Utc::now();
-        let duration_ms = end_time.signed_duration_since(state.start_time).num_milliseconds() as u64;
-        let formatted_start_short = state.start_time.format("%Y-%m-%d %H:%M");
-        let formatted_start_long = state.start_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
-        let formatted_end_long = end_time.format("%Y-%m-%d %H:%M:%S%.3f UTC");
-        let host = &state.host;
-        let cmd_short = Self::get_short_command(&state.cmd);
-        let cmd_long = &state.cmd;
-        let log_filename = &state.log_filename_by_host;
-
-        let entry = format!(
-            "\n## {formatted_start_short} on {host}: {cmd_short}\n\
-            ```\n\
-            Host:     {host}\n\
-            Start:    {formatted_start_long}\n\
-            Command:  {cmd_long}\n\
-            End:      {formatted_end_long}\n\
-            Duration: {duration_ms}ms\n\
-            ExitCode: {exit_code}\n\
-            ```\n\
-            Output:   [[{log_filename}]]\n\
-            \n\
-            ---\n\
-            ");
-
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(prodlog_dir.join("prodlog.md"))?
-            .write_all(entry.as_bytes())?;
-
-        // Log to JSON file for webui
-        let json_path = prodlog_dir.join("prodlog.json");
-        let mut prodlog_data = if let Ok(content) = fs::read_to_string(&json_path) {
-            serde_json::from_str(&content).unwrap_or(ProdlogData { entries: Vec::new() })
-        } else {
-            ProdlogData { entries: Vec::new() }
-        };
-        prodlog_data.entries.push(ProdlogEntry {
-            host: host.to_string(),
-            start_time: state.start_time.to_rfc3339(),
-            end_time: end_time.to_rfc3339(),
-            duration_ms,
-            command: cmd_long.to_string(),
-            log_filename: log_filename.to_string(),
-            prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
-            exit_code,
-        });
-        fs::write(&json_path, serde_json::to_string_pretty(&prodlog_data)?)?;
-
-        let footer = format!(
-            "```\n\
-            End:      {formatted_end_long}\n\
-            Duration: {duration_ms}ms\n\
-            ExitCode: {exit_code}\n");
-        state.log_by_host.write_all(footer.as_bytes())?;
-        state.log_all_hosts.write_all(footer.as_bytes())?;
-        state.log_by_host.flush()?;
-        state.log_all_hosts.flush()?;
+    fn stop_capturing(state: &mut CaptureState, exit_code: i32, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+        for sink in sinks {
+            match sink.add_entry(state, exit_code, Utc::now()) {
+                Ok(_) => (),
+                Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
+            }
+        }
 
         Ok(())
     }
@@ -338,7 +220,7 @@ impl StdoutHandler {
                                     // TODO: error handling
                                     if let (Some(client_host), Some(client_cwd), Some(client_cmd)) = (args.get(0), args.get(1), args.get(2)) {
                                         print_prodlog_message(&format!("Starting capture of {} on {}:{}", client_cmd, client_host, client_cwd));
-                                        self.capturing = Some(Self::start_capturing(&self.prodlog_dir, client_host, client_cwd, client_cmd)?);
+                                        self.capturing = Some(Self::start_capturing(client_host, client_cwd, client_cmd)?);
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     } else {
@@ -356,7 +238,7 @@ impl StdoutHandler {
                                                                             capture.host,
                                                                             capture.cwd,
                                                                             exit_code));
-                                        Self::stop_capturing(&self.prodlog_dir, capture, exit_code)?;
+                                        Self::stop_capturing(capture, exit_code, &mut self.sinks)?;
                                     } else {
                                         print_prodlog_message("Warning: Tried to stop capture, but no capture was active");
                                     }
@@ -443,7 +325,11 @@ async fn run_parent(
     let prodlog_dir = prodlog_dir.clone();
     let _forward_stdout = tokio::task::spawn_blocking(move || {
         let mut buffer = [0; 1024];
-        let mut stream_handler = StdoutHandler::new(prodlog_dir, child_stdin_tx2, raw_stdout);
+        let sinks: Vec<Box<dyn sinks::Sink>> = vec![
+            Box::new(sinks::json::JsonSink::new(prodlog_dir.clone())),
+            Box::new(sinks::obsidian::ObsidianSink::new(prodlog_dir.clone())),
+        ];
+        let mut stream_handler = StdoutHandler::new(child_stdin_tx2, raw_stdout, sinks);
         loop {
             let n = raw_master_read.read(&mut buffer);
             if let Ok(n) = n {
