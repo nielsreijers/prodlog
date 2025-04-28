@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use crate::CaptureState;
 use super::{get_short_command, Sink};
+use base64;
+use base64::Engine as _;
 
 pub struct JsonSink {
     prodlog_dir: PathBuf,
@@ -25,6 +27,7 @@ struct ProdlogEntry {
     log_filename: String,
     prodlog_version: String,
     exit_code: i32,
+    output: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -66,6 +69,7 @@ impl Sink for JsonSink {
             log_filename: log_filename.to_string(),
             prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
             exit_code,
+            output: base64::engine::general_purpose::STANDARD.encode(&capture.captured_output),
         });
 
         // Write updated JSON file
