@@ -378,7 +378,7 @@ async fn index(
                     <td>{}ms</td>
                     <td>{}</td>
                     <td>
-                        <a href="{}">View</a>
+                        <a href="output/{}">View</a>
                         {}
                     </td>
                 </tr>"#,
