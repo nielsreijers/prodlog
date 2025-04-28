@@ -350,6 +350,9 @@ async fn index(
         filtered_entries.push((entry, None));
     }
 
+    filtered_entries.sort_by_key(| entry | &entry.0.start_time);
+    filtered_entries.reverse();
+
     // Generate table rows
     let rows = filtered_entries.iter()
         .map(|(entry, preview)| {
