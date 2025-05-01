@@ -18,9 +18,11 @@ fn get_short_command(cmd: &str) -> String {
         first_word.to_string()
     }
 }
+
 fn get_formatted_time_long(time: DateTime<Utc>) -> String {
     time.format("%Y-%m-%d %H:%M:%S%.3f UTC").to_string()
 }
+
 fn get_formatted_time_short(time: DateTime<Utc>) -> String {
     time.format("%Y-%m-%d %H:%M").to_string()
 }

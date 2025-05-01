@@ -17,6 +17,7 @@ use std::fs;
 use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
 use dirs;
+use uuid::Uuid; // Add uuid dependency
 
 mod ui;
 mod sinks;
@@ -49,6 +50,7 @@ enum StreamState {
 }
 
 struct CaptureState {
+    uuid: Uuid,
     host: String,
     cwd: String,
     cmd: String,
@@ -110,6 +112,7 @@ impl StdoutHandler {
         let start_time = Utc::now();
 
         Ok(CaptureState {
+            uuid: Uuid::new_v4(),
             host: host.to_string(),
             cwd: cwd.to_string(),
             cmd: cmd.to_string(),
