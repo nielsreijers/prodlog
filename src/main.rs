@@ -331,6 +331,7 @@ async fn run_parent(
         let sinks: Vec<Box<dyn sinks::Sink>> = vec![
             Box::new(sinks::json::JsonSink::new(prodlog_dir.clone())),
             Box::new(sinks::obsidian::ObsidianSink::new(prodlog_dir.clone())),
+            Box::new(sinks::sqlite::SqliteSink::new(prodlog_dir.clone()).unwrap()),
         ];
         let mut stream_handler = StdoutHandler::new(child_stdin_tx2, raw_stdout, sinks);
         loop {

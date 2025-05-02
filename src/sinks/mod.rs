@@ -4,6 +4,7 @@ use super::CaptureState;
 
 pub mod obsidian;
 pub mod json;
+pub mod sqlite;
 
 pub trait Sink {
     fn add_entry(&mut self, capture: &CaptureState, exit_code: i32, end_time: DateTime<Utc>) -> Result<(), std::io::Error>;
