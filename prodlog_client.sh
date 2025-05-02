@@ -27,8 +27,10 @@ send_command() {
 
 # Function to print help message
 print_help() {
-    echo "Usage: $0 run <command> [args...]"
+    echo "Usage: $0 run [-m <message>] <command> [args...]"
     echo "Record a command and its output in prodlog. An instance of prodlog_server must be running."
+    echo ""
+    echo "  -m <message>   Optional message to log with the command."
     echo ""
     echo "Testing if prodlog_server is running:"
     send_command "$CMD_IS_INACTIVE"
@@ -44,6 +46,30 @@ fi
 
 # Remove the 'run' argument
 shift
+
+# Parse options before the command
+message=""
+while [[ "$1" == -* ]]; do
+    case "$1" in
+        -m)
+            shift
+            if [[ -z "$1" ]]; then
+                echo "Error: -m requires a message argument."
+                exit 1
+            fi
+            message="$1"
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
 
 # Check if a command was provided
 if [[ $# -eq 0 ]]; then
@@ -77,7 +103,7 @@ cwd=$(pwd)
 cmd_str="$*" # Capture the command and arguments as a single string
 
 # Send start marker
-send_command "$CMD_START_CAPTURE" "$hostname" "$cwd" "$cmd_str"
+send_command "$CMD_START_CAPTURE" "$hostname" "$cwd" "$cmd_str" "$message"
 
 # Trap function
 on_exit() {

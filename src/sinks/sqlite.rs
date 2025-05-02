@@ -24,7 +24,8 @@ impl SqliteSink {
                 end_time TEXT,
                 duration_ms INTEGER,
                 exit_code INTEGER,
-                output BLOB
+                output BLOB,
+                message TEXT
             )",
             [],
         ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -37,8 +38,8 @@ impl Sink for SqliteSink {
         let duration_ms = end_time.signed_duration_since(capture.start_time).num_milliseconds() as u64;
         let output = &capture.captured_output;
         self.conn.execute(
-            "INSERT INTO prodlog_entries (uuid, host, cwd, cmd, start_time, end_time, duration_ms, exit_code, output)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO prodlog_entries (uuid, host, cwd, cmd, start_time, end_time, duration_ms, exit_code, output, message)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 capture.uuid.to_string(),
                 &capture.host,
@@ -49,6 +50,7 @@ impl Sink for SqliteSink {
                 duration_ms as i64,
                 exit_code,
                 output,
+                capture.message,
             ],
         ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         Ok(())

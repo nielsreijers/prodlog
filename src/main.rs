@@ -56,6 +56,7 @@ struct CaptureState {
     cmd: String,
     start_time: DateTime<Utc>,
     captured_output: Vec<u8>,
+    message: String
 }
 
 enum StdoutHandlerState {
@@ -108,7 +109,7 @@ impl StdoutHandler {
     }
 
 
-    fn start_capturing(host: &str, cwd: &str, cmd: &str) -> Result<CaptureState, std::io::Error> {
+    fn start_capturing(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureState, std::io::Error> {
         let start_time = Utc::now();
 
         Ok(CaptureState {
@@ -118,6 +119,7 @@ impl StdoutHandler {
             cmd: cmd.to_string(),
             start_time,
             captured_output: Vec::new(),
+            message: message.to_string()
         })
     }
 
@@ -222,8 +224,13 @@ impl StdoutHandler {
                                 CMD_START_CAPTURE => {
                                     // TODO: error handling
                                     if let (Some(client_host), Some(client_cwd), Some(client_cmd)) = (args.get(0), args.get(1), args.get(2)) {
+                                        let client_message = if let Some(msg) = args.get(3) {
+                                            msg
+                                        } else {
+                                            ""
+                                        };
                                         print_prodlog_message(&format!("Starting capture of {} on {}:{}", client_cmd, client_host, client_cwd));
-                                        self.capturing = Some(Self::start_capturing(client_host, client_cwd, client_cmd)?);
+                                        self.capturing = Some(Self::start_capturing(client_host, client_cwd, client_cmd, client_message)?);
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     } else {
