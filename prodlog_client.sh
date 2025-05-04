@@ -79,7 +79,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Check if prodlog is running
-send_command "$CMD_ARE_YOU_RUNNING"
+send_command "$CMD_ARE_YOU_RUNNING" "2.2.0"
 
 # Read response from stdin with a 1-second timeout
 if ! read -t 1 response; then

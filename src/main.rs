@@ -201,10 +201,19 @@ impl StdoutHandler {
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_ARE_YOU_RUNNING => {
-                                    // TODO: figure out why async send doesn't work here. It works fine in run_parent. Are we deadlocking?
-                                    print_prodlog_message("Telling server side prodlog recording is active:");
-                                    self.child_stdin_tx.blocking_send(REPLY_YES_PRODLOG_IS_RUNNING.to_vec()).unwrap();
+                                    if let Some(version) = args.get(0) {
+                                        if version != env!("CARGO_PKG_VERSION") {
+                                            print_prodlog_message(&format!("Error: Unsupported version: {} (expected {})", version, env!("CARGO_PKG_VERSION")));
+                                        } else {
+                                            print_prodlog_message("Telling server side prodlog recording is active:");
+                                            // TODO: figure out why async send doesn't work here. It works fine in run_parent. Are we deadlocking?
+                                            self.child_stdin_tx.blocking_send(REPLY_YES_PRODLOG_IS_RUNNING.to_vec()).unwrap();        
+                                        }
+                                    } else {
+                                        print_prodlog_message("Error: Missing version argument");
+                                    }
                                     self.state = StdoutHandlerState::Normal;
+                                    pos = new_pos;
                                 }
                                 CMD_START_CAPTURE => {
                                     // TODO: error handling
@@ -221,6 +230,7 @@ impl StdoutHandler {
                                     } else {
                                         print_prodlog_message("Error: Missing arguments for START CAPTURE");
                                         self.state = StdoutHandlerState::Normal;
+                                        pos = new_pos;
                                     }
                                 },
                                 CMD_STOP_CAPTURE => {
