@@ -8,19 +8,23 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
-use urlencoding;
 use chrono::DateTime;
+use urlencoding;
+
+use crate::helpers;
 
 mod ansi_to_html;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LogEntry {
     start_time: String,
+    end_time: String,
     host: String,
     command: String,
     duration_ms: u64,
-    log_filename: String,
     exit_code: i32,
+    uuid: String,
+    output: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -331,19 +335,17 @@ async fn index(
         // Check output content if output filter is present
         if let Some(output_filter) = &filters.output {
             if !output_filter.is_empty() {
-                let log_path = state.join(&entry.log_filename);
-                if let Ok(content) = fs::read_to_string(log_path).await {
-                    if !content.to_lowercase().contains(&output_filter.to_lowercase()) {
-                        continue;
-                    }
-                    // Add preview of matching content
-                    let idx = content.to_lowercase().find(&output_filter.to_lowercase()).unwrap();
-                    let start = idx.saturating_sub(50);
-                    let end = (idx + output_filter.len() + 50).min(content.len());
-                    let preview = content[start..end].to_string();
-                    filtered_entries.push((entry, Some(preview)));
+                let output_content = helpers::base64_decode(&entry.output);
+                if !output_content.to_lowercase().contains(&output_filter.to_lowercase()) {
                     continue;
                 }
+                // Add preview of matching output_content
+                let idx = output_content.to_lowercase().find(&output_filter.to_lowercase()).unwrap();
+                let start = idx.saturating_sub(50);
+                let end = (idx + output_filter.len() + 50).min(output_content.len());
+                let preview = output_content[start..end].to_string();
+                filtered_entries.push((entry, Some(preview)));
+                continue;
             }
         }
         
@@ -356,7 +358,6 @@ async fn index(
     // Generate table rows
     let rows = filtered_entries.iter()
         .map(|(entry, preview)| {
-            let encoded_path = urlencoding::encode(&entry.log_filename);
             let preview_html = if let Some(preview) = preview {
                 if let Some(output_filter) = &filters.output {
                     format!(
@@ -370,6 +371,15 @@ async fn index(
                 String::new()
             };
             let row_class = if entry.exit_code != 0 { " class=\"error-row\"" } else { "" };
+            let output_link = if let Some(output_filter) = &filters.output {
+                if !output_filter.is_empty() {
+                    format!(r#"output/{}?output={}"#, entry.uuid, urlencoding::encode(output_filter))
+                } else {
+                    format!(r#"output/{}"#, entry.uuid)
+                }
+            } else {
+                format!(r#"output/{}"#, entry.uuid)
+            };
             format!(
                 r#"<tr{}>
                     <td>{}</td>
@@ -378,7 +388,7 @@ async fn index(
                     <td>{}ms</td>
                     <td>{}</td>
                     <td>
-                        <a href="output/{}">View</a>
+                        <a href="{}">View</a>
                         {}
                     </td>
                 </tr>"#,
@@ -388,7 +398,7 @@ async fn index(
                 entry.command,
                 entry.duration_ms,
                 entry.exit_code,
-                encoded_path,
+                output_link,
                 preview_html
             )
         })
@@ -398,15 +408,25 @@ async fn index(
     Html(generate_html(&rows, &filters))
 }
 
-fn generate_output_html(content: &str, output_filter: Option<&str>) -> String {
-    let highlighted_content = if let Some(filter) = output_filter {
-        highlight_matches(content, filter)
+fn generate_output_html(entry: &LogEntry, output_filter: Option<&str>) -> String {
+    // Format times
+    let start = format_timestamp(&entry.start_time);
+    let end =  format_timestamp(&entry.end_time);
+    let duration = entry.duration_ms;
+    let exit = entry.exit_code;
+    let host = &entry.host;
+    let command = &entry.command;
+
+    let decoded_output = helpers::base64_decode(&entry.output);
+    let html_output = ansi_to_html::ansi_to_html(&decoded_output);
+    let highlighted_output = if let Some(filter) = output_filter {
+        highlight_matches(&html_output, filter)
     } else {
-        content.to_string()
+        html_output
     };
 
-    format!(r#"
-<!DOCTYPE html>
+    format!(
+r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Output View</title>
@@ -430,7 +450,7 @@ fn generate_output_html(content: &str, output_filter: Option<&str>) -> String {
             margin: 0 auto;
             padding: 2rem;
         }}
-        pre {{ 
+        .command-output {{ 
             white-space: pre-wrap;
             margin: 0;
             padding: 1.5rem;
@@ -455,10 +475,12 @@ fn generate_output_html(content: &str, output_filter: Option<&str>) -> String {
             color: var(--proton-text);
         }}
         .match-highlight {{ 
-            background-color: rgba(109, 74, 255, 0.2);
-            color: var(--proton-text);
-            padding: 0.125rem 0.25rem;
+            background-color: #ffeb3b;
+            color: #222;
+            padding: 2px 4px;
             border-radius: 4px;
+            font-weight: bold;
+            box-shadow: 0 0 0 2px #fff59d;
         }}
     </style>
 </head>
@@ -467,37 +489,47 @@ fn generate_output_html(content: &str, output_filter: Option<&str>) -> String {
         <div class="back-link">
             <a href="/">← Back to list</a>
         </div>
-        <pre>{}</pre>
+        <pre>
+        Host:     {host}
+        Command:  {command}
+        Start:    {start}
+        End:      {end}
+        Duration: {duration}ms
+        ExitCode: {exit}
+        Output:
+        </pre>
+        <pre class="command-output">{highlighted_output}</pre>
     </div>
 </body>
 </html>
-    "#, highlighted_content)
+    "#)
 }
 
 async fn view_output(
     State(state): State<Arc<PathBuf>>,
-    Path(filepath): Path<String>,
+    Path(uuid): Path<String>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
-    // URL decode the filepath
-    let decoded_path = urlencoding::decode(&filepath)
-        .unwrap_or(std::borrow::Cow::from(&filepath))
-        .into_owned();
-    
-    let file_path = state.join(decoded_path);
-    
-    // Security check to prevent directory traversal
-    if !file_path.starts_with(&*state) {
-        return Html(String::from("Access denied"));
-    }
-    
-    let content = match fs::read_to_string(file_path).await {
+    // Read the JSON file
+    let json_path = state.join("prodlog.json");
+    let json_content = match fs::read_to_string(json_path).await {
         Ok(content) => content,
-        Err(_) => String::from("File not found"),
+        Err(_) => return Html(String::from("Entry not found")),
     };
 
-    let html_content = ansi_to_html::ansi_to_html(&content);
-    Html(generate_output_html(&html_content, filters.output.as_deref()))
+    // Parse JSON
+    let data: LogData = match serde_json::from_str(&json_content) {
+        Ok(data) => data,
+        Err(_) => return Html(String::from("Error parsing JSON")),
+    };
+
+    // Find the entry with the matching uuid
+    let entry = data.entries.iter().find(|e| e.uuid == uuid);
+    if let Some(entry) = entry {
+        Html(generate_output_html(entry, filters.output.as_deref()))
+    } else {
+        Html(String::from("Entry not found"))
+    }
 }
 
 pub async fn run_ui(log_dir: &PathBuf, port: u16) {
@@ -505,7 +537,7 @@ pub async fn run_ui(log_dir: &PathBuf, port: u16) {
    
     let app = Router::new()
         .route("/", get(index))
-        .route("/output/:filepath", get(view_output))
+        .route("/output/:uuid", get(view_output))
         .with_state(app_state);
 
     let addr = format!("0.0.0.0:{}", port);    

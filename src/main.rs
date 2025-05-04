@@ -21,6 +21,7 @@ use uuid::Uuid; // Add uuid dependency
 
 mod ui;
 mod sinks;
+mod helpers;
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
 const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
@@ -97,18 +98,6 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn base64_decode(&self, data: &str) -> String {
-        use base64::{Engine as _, engine::{general_purpose}};
-        match general_purpose::STANDARD.decode(data) {
-            Ok(bytes) => String::from_utf8(bytes).unwrap(),
-            Err(e) => {
-                println!("Error decoding base64: {}", e);
-                data.to_string() // Shouldn't happen, but if it does, just return the original string.
-            }
-        }
-    }
-
-
     fn start_capturing(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureState, std::io::Error> {
         let start_time = Utc::now();
 
@@ -153,7 +142,7 @@ impl StdoutHandler {
                 let args: Vec<String> = if rest.is_empty() {
                     Vec::new()
                 } else {
-                    rest.split(':').map(|s| self.base64_decode(s)).collect()
+                    rest.split(':').map(|s| helpers::base64_decode(s)).collect()
                 };
                 StreamState::Completed(cmd, args, pos)
             }

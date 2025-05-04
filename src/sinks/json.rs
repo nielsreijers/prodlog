@@ -3,10 +3,8 @@ use std::path::PathBuf;
 use std::fs;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::CaptureState;
-use super::{get_short_command, Sink};
-use base64;
-use base64::Engine as _;
+use crate::{helpers, CaptureState};
+use super::Sink;
 use uuid::Uuid;
 
 pub struct JsonSink {
@@ -69,7 +67,6 @@ struct ProdlogEntryV2_2 {
     command: String,
     end_time: String,
     duration_ms: u64,
-    log_filename: String,
     exit_code: i32,
     output: String,
     message: String,
@@ -79,13 +76,6 @@ struct ProdlogEntryV2_2 {
 struct ProdlogDataV2_2 {
     prodlog_version: String,
     entries: Vec<ProdlogEntryV2_2>,
-}
-
-// TODO: this is just temporary, we should log the output as base64 to the json file directly
-fn get_output_log_filename (capture: &CaptureState) -> String {
-    let formatted_time = capture.start_time.format("%Y%m%d_%H%M%S").to_string();
-    let short_cmd = get_short_command(&capture.cmd).replace(" ", "_");
-    format!("prodlog_output/{}/{}-{}.md", capture.host, formatted_time, short_cmd)
 }
 
 fn v2_0_to_v2_1(data: ProdlogDataV2_0) -> ProdlogDataV2_1 {
@@ -116,7 +106,6 @@ fn v2_1_to_v2_2(data: ProdlogDataV2_1) -> ProdlogDataV2_2 {
             command: e.command,
             end_time: e.end_time,
             duration_ms: e.duration_ms,
-            log_filename: e.log_filename,
             exit_code: e.exit_code,
             output: e.output,
             message: "".to_string()
@@ -153,7 +142,6 @@ impl Sink for JsonSink {
         // Add new entry
         let host = &capture.host;
         let cmd_long = &capture.cmd;
-        let log_filename = get_output_log_filename(&capture);
         let duration_ms = end_time.signed_duration_since(capture.start_time).num_milliseconds() as u64;
         prodlog_data.entries.push(ProdlogEntryV2_2 {
             uuid: capture.uuid,
@@ -162,9 +150,8 @@ impl Sink for JsonSink {
             end_time: end_time.to_rfc3339(),
             duration_ms,
             command: cmd_long.to_string(),
-            log_filename: log_filename.to_string(),
             exit_code,
-            output: base64::engine::general_purpose::STANDARD.encode(&capture.captured_output),
+            output: helpers::base64_encode(&capture.captured_output),
             message: capture.message.to_string(),
         });
 
