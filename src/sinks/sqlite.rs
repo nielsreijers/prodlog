@@ -1,7 +1,7 @@
-use chrono::{DateTime, Utc};
+use chrono::Duration;
 use rusqlite::{params, Connection};
 use std::path::PathBuf;
-use crate::CaptureState;
+use crate::model::CaptureV2_2;
 use super::Sink;
 
 pub struct SqliteSink {
@@ -34,9 +34,8 @@ impl SqliteSink {
 }
 
 impl Sink for SqliteSink {
-    fn add_entry(&mut self, capture: &CaptureState, exit_code: i32, end_time: DateTime<Utc>) -> Result<(), std::io::Error> {
-        let duration_ms = end_time.signed_duration_since(capture.start_time).num_milliseconds() as u64;
-        let output = &capture.captured_output;
+    fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error> {
+        let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
         self.conn.execute(
             "INSERT INTO prodlog_entries (uuid, host, cwd, cmd, start_time, end_time, duration_ms, exit_code, output, message)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -47,9 +46,9 @@ impl Sink for SqliteSink {
                 &capture.cmd,
                 capture.start_time.to_rfc3339(),
                 end_time.to_rfc3339(),
-                duration_ms as i64,
-                exit_code,
-                output,
+                capture.duration_ms as i64,
+                capture.exit_code,
+                &capture.captured_output,
                 capture.message,
             ],
         ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;

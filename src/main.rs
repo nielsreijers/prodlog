@@ -11,17 +11,19 @@ use tokio::sync::mpsc;
 use tokio::signal::unix::{ signal, SignalKind };
 use nix::unistd::execvp;
 use std::ffi::CString;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use termion::{color, style};
 use std::fs;
 use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
 use dirs;
 use uuid::Uuid; // Add uuid dependency
+use model::CaptureV2_2;
 
 mod ui;
 mod sinks;
 mod helpers;
+mod model;
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
 const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
@@ -50,16 +52,6 @@ enum StreamState {
     Completed(String, Vec<String>, usize)
 }
 
-struct CaptureState {
-    uuid: Uuid,
-    host: String,
-    cwd: String,
-    cmd: String,
-    start_time: DateTime<Utc>,
-    captured_output: Vec<u8>,
-    message: String
-}
-
 enum StdoutHandlerState {
     Normal,
     MatchingPrefix(usize),
@@ -68,7 +60,7 @@ enum StdoutHandlerState {
 struct StdoutHandler {
     stdout: RawTerminal<Stdout>,
     child_stdin_tx: mpsc::Sender<Vec<u8>>,
-    capturing: Option<CaptureState>,
+    capturing: Option<CaptureV2_2>,
     state: StdoutHandlerState,
     sinks: Vec<Box<dyn sinks::Sink>>,
 }
@@ -98,23 +90,27 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn start_capturing(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureState, std::io::Error> {
+    fn start_capturing(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureV2_2, std::io::Error> {
         let start_time = Utc::now();
 
-        Ok(CaptureState {
+        Ok(CaptureV2_2 {
             uuid: Uuid::new_v4(),
             host: host.to_string(),
             cwd: cwd.to_string(),
             cmd: cmd.to_string(),
             start_time,
             captured_output: Vec::new(),
-            message: message.to_string()
+            message: message.to_string(),
+            duration_ms: 0,
+            exit_code: -1,
         })
     }
 
-    fn stop_capturing(state: &mut CaptureState, exit_code: i32, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+    fn stop_capturing(state: &mut CaptureV2_2, exit_code: i32, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+        state.exit_code = exit_code;
+        state.duration_ms = Utc::now().signed_duration_since(state.start_time).num_milliseconds() as u64;
         for sink in sinks {
-            match sink.add_entry(state, exit_code, Utc::now()) {
+            match sink.add_entry(state) {
                 Ok(_) => (),
                 Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
             }
@@ -142,7 +138,7 @@ impl StdoutHandler {
                 let args: Vec<String> = if rest.is_empty() {
                     Vec::new()
                 } else {
-                    rest.split(':').map(|s| helpers::base64_decode(s)).collect()
+                    rest.split(':').map(|s| helpers::base64_decode_string(s)).collect()
                 };
                 StreamState::Completed(cmd, args, pos)
             }

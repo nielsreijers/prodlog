@@ -32,3 +32,4 @@ urlencoding = "2.1.3"
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
 vte = "0.15.0"
 rusqlite = { version = "0.31", features = ["chrono"] }
+serde_with = { version = "3.12.0", features = ["base64"] }

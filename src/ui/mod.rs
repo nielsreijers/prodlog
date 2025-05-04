@@ -4,32 +4,20 @@ use axum::{
     response::Html,
     extract::{State, Query, Path},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use uuid::Uuid;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::fs;
-use chrono::DateTime;
+use chrono::{DateTime, Duration, Utc};
 use urlencoding;
 
-use crate::helpers;
+use crate::model::CaptureV2_2;
 
 mod ansi_to_html;
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct LogEntry {
-    start_time: String,
-    end_time: String,
-    host: String,
-    command: String,
-    duration_ms: u64,
-    exit_code: i32,
-    uuid: String,
-    output: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct LogData {
-    entries: Vec<LogEntry>,
+fn load_log_data(json_path: &PathBuf) -> Result<Vec<CaptureV2_2>, std::io::Error> {
+    let data = crate::sinks::json::read_prodlog_data(json_path)?;
+    Ok(data.entries)
 }
 
 // Add query parameters struct for filters
@@ -284,12 +272,12 @@ fn highlight_matches(text: &str, search_term: &str) -> String {
     text.replace(search_term, &format!("<span class=\"match-highlight\">{}</span>", search_term))
 }
 
-fn format_timestamp(timestamp: &str) -> String {
-    if let Ok(dt) = DateTime::parse_from_rfc3339(timestamp) {
-        dt.format("%Y-%m-%d %H:%M:%S UTC").to_string()
-    } else {
-        timestamp.to_string()
-    }
+fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
+    timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+fn output_to_string(output: Vec<u8>) -> String {
+    String::from_utf8(output.clone()).unwrap()
 }
 
 async fn index(
@@ -298,24 +286,18 @@ async fn index(
 ) -> Html<String> {
     // Read the JSON file
     let json_path = state.join("prodlog.json");
-    let json_content = match fs::read_to_string(json_path).await {
-        Ok(content) => content,
-        Err(_) => return Html(generate_html("", &filters))
-    };
-
-    // Parse JSON
-    let data: LogData = match serde_json::from_str(&json_content) {
+    let data = match load_log_data(&json_path) {
         Ok(data) => data,
-        Err(_) => return Html(generate_html("", &filters))
+        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
     };
 
     // Filter entries
     let mut filtered_entries = Vec::new();
     
-    for entry in &data.entries {
+    for entry in &data {
         // Apply date, host, and command filters
         if let Some(date) = &filters.date {
-            if !entry.start_time.starts_with(date) {
+            if !entry.start_time.to_rfc3339().starts_with(date) {
                 continue;
             }
         }
@@ -327,7 +309,7 @@ async fn index(
         }
         
         if let Some(command) = &filters.command {
-            if !entry.command.to_lowercase().contains(&command.to_lowercase()) {
+            if !entry.cmd.to_lowercase().contains(&command.to_lowercase()) {
                 continue;
             }
         }
@@ -335,7 +317,7 @@ async fn index(
         // Check output content if output filter is present
         if let Some(output_filter) = &filters.output {
             if !output_filter.is_empty() {
-                let output_content = helpers::base64_decode(&entry.output);
+                let output_content = output_to_string(entry.captured_output.clone());
                 if !output_content.to_lowercase().contains(&output_filter.to_lowercase()) {
                     continue;
                 }
@@ -395,7 +377,7 @@ async fn index(
                 row_class,
                 format_timestamp(&entry.start_time),
                 entry.host,
-                entry.command,
+                entry.cmd,
                 entry.duration_ms,
                 entry.exit_code,
                 output_link,
@@ -408,16 +390,17 @@ async fn index(
     Html(generate_html(&rows, &filters))
 }
 
-fn generate_output_html(entry: &LogEntry, output_filter: Option<&str>) -> String {
+fn generate_output_html(entry: &CaptureV2_2, output_filter: Option<&str>) -> String {
     // Format times
     let start = format_timestamp(&entry.start_time);
-    let end =  format_timestamp(&entry.end_time);
+    let end_time = entry.start_time + Duration::milliseconds(entry.duration_ms as i64);
+    let end =  format_timestamp(&end_time);
     let duration = entry.duration_ms;
     let exit = entry.exit_code;
     let host = &entry.host;
-    let command = &entry.command;
+    let command = &entry.cmd;
 
-    let decoded_output = helpers::base64_decode(&entry.output);
+    let decoded_output = output_to_string(entry.captured_output.clone());
     let html_output = ansi_to_html::ansi_to_html(&decoded_output);
     let highlighted_output = if let Some(filter) = output_filter {
         highlight_matches(&html_output, filter)
@@ -510,21 +493,15 @@ async fn view_output(
     Path(uuid): Path<String>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
-    // Read the JSON file
     let json_path = state.join("prodlog.json");
-    let json_content = match fs::read_to_string(json_path).await {
-        Ok(content) => content,
-        Err(_) => return Html(String::from("Entry not found")),
-    };
-
-    // Parse JSON
-    let data: LogData = match serde_json::from_str(&json_content) {
+    let data = match load_log_data(&json_path) {
         Ok(data) => data,
-        Err(_) => return Html(String::from("Error parsing JSON")),
+        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
     };
 
     // Find the entry with the matching uuid
-    let entry = data.entries.iter().find(|e| e.uuid == uuid);
+    let uuid = Uuid::parse_str(&uuid).unwrap();
+    let entry = data.iter().find(|e| e.uuid == uuid);
     if let Some(entry) = entry {
         Html(generate_output_html(entry, filters.output.as_deref()))
     } else {

@@ -1,9 +1,9 @@
 use core::panic;
 use std::path::PathBuf;
 use std::fs;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::{helpers, CaptureState};
+use crate::helpers;
+use crate::model::CaptureV2_2;
 use super::Sink;
 use uuid::Uuid;
 
@@ -19,6 +19,8 @@ impl JsonSink {
         read_prodlog_data(&prodlog_file).unwrap();
         return Self { prodlog_file };
     }
+
+    
 }
 
 #[derive(Serialize, Deserialize)]
@@ -38,7 +40,6 @@ struct ProdlogEntryV2_0 {
 struct ProdlogDataV2_0 {
     entries: Vec<ProdlogEntryV2_0>,
 }
-
 
 #[derive(Serialize, Deserialize)]
 struct ProdlogEntryV2_1 {
@@ -60,22 +61,10 @@ struct ProdlogDataV2_1 {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ProdlogEntryV2_2 {
-    uuid: Uuid,
-    start_time: String,
-    host: String,
-    command: String,
-    end_time: String,
-    duration_ms: u64,
-    exit_code: i32,
-    output: String,
-    message: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ProdlogDataV2_2 {
+// TMP pub only while UI reads from JSON and not yet from SQLite
+pub struct ProdlogDataV2_2 {
     prodlog_version: String,
-    entries: Vec<ProdlogEntryV2_2>,
+    pub entries: Vec<CaptureV2_2>,
 }
 
 fn v2_0_to_v2_1(data: ProdlogDataV2_0) -> ProdlogDataV2_1 {
@@ -95,26 +84,25 @@ fn v2_0_to_v2_1(data: ProdlogDataV2_0) -> ProdlogDataV2_1 {
     }
 }
 
-
 fn v2_1_to_v2_2(data: ProdlogDataV2_1) -> ProdlogDataV2_2 {
     ProdlogDataV2_2 {
         prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
-        entries: data.entries.into_iter().map(|e| ProdlogEntryV2_2 {
+        entries: data.entries.into_iter().map(|e| CaptureV2_2 {
             uuid: Uuid::new_v4(),
-            start_time: e.start_time,
+            start_time: chrono::DateTime::parse_from_rfc3339(&e.start_time).unwrap().with_timezone(&chrono::Utc),
             host: e.host,
-            command: e.command,
-            end_time: e.end_time,
+            cwd: "".to_string(),
+            cmd: e.command,
             duration_ms: e.duration_ms,
             exit_code: e.exit_code,
-            output: e.output,
+            captured_output: helpers::base64_decode(&e.output),
             message: "".to_string()
         }).collect(),
     }
 }
 
-fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_2, std::io::Error> {
-    // Read existing JSON file
+// TMP pub only while UI reads from JSON and not yet from SQLite
+pub fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_2, std::io::Error> {
     if let Ok(content) = fs::read_to_string(&json_path) {
         if let Ok(data) = serde_json::from_str(&content) {
             return Ok(data);
@@ -135,25 +123,11 @@ fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_2, std::io::Er
 }
 
 impl Sink for JsonSink {
-    fn add_entry(&mut self, capture: &CaptureState, exit_code: i32, end_time: DateTime<Utc>) -> Result<(), std::io::Error> {
+    fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error> {
         // Read existing JSON file
         let mut prodlog_data = read_prodlog_data(&self.prodlog_file)?;
 
-        // Add new entry
-        let host = &capture.host;
-        let cmd_long = &capture.cmd;
-        let duration_ms = end_time.signed_duration_since(capture.start_time).num_milliseconds() as u64;
-        prodlog_data.entries.push(ProdlogEntryV2_2 {
-            uuid: capture.uuid,
-            host: host.to_string(),
-            start_time: capture.start_time.to_rfc3339(),
-            end_time: end_time.to_rfc3339(),
-            duration_ms,
-            command: cmd_long.to_string(),
-            exit_code,
-            output: helpers::base64_encode(&capture.captured_output),
-            message: capture.message.to_string(),
-        });
+        prodlog_data.entries.push(capture.clone());
 
         // Write updated JSON file
         fs::write(&self.prodlog_file, serde_json::to_string_pretty(&prodlog_data)?)?;

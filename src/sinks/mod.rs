@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use super::CaptureState;
+use crate::model::CaptureV2_2;
 
 
 pub mod obsidian;
@@ -7,7 +7,7 @@ pub mod json;
 pub mod sqlite;
 
 pub trait Sink {
-    fn add_entry(&mut self, capture: &CaptureState, exit_code: i32, end_time: DateTime<Utc>) -> Result<(), std::io::Error>;
+    fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error>;
 }
 
 fn get_short_command(cmd: &str) -> String {

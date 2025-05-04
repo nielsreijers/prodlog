@@ -1,6 +1,7 @@
 use std::{fs::File, io::Write, path::PathBuf};
-use chrono::{DateTime, Utc};
-use crate::{sinks::get_short_command, CaptureState};
+use chrono::Duration;
+use crate::sinks::get_short_command;
+use crate::model::CaptureV2_2;
 use super::{get_formatted_time_long, get_formatted_time_short, Sink};
 
 pub struct ObsidianSink {
@@ -13,14 +14,14 @@ impl ObsidianSink {
     }
 }
 
-fn get_output_log_filename (capture: &CaptureState) -> String {
+fn get_output_log_filename (capture: &CaptureV2_2) -> String {
     let formatted_time = capture.start_time.format("%Y%m%d_%H%M%S").to_string();
     let short_cmd = get_short_command(&capture.cmd).replace(" ", "_");
     format!("prodlog_output/{}/{}-{}.md", capture.host, formatted_time, short_cmd)
 }
 
 impl Sink for ObsidianSink {
-    fn add_entry(&mut self, capture: &CaptureState, exit_code: i32, end_time: DateTime<Utc>) -> Result<(), std::io::Error> {
+    fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error> {
         std::fs::create_dir_all(self.prodlog_dir.join(format!("prodlog_output/{}", capture.host)))?;
         let output_filename = get_output_log_filename(capture);
         let mut log_by_host = File::create(self.prodlog_dir.join(output_filename.clone()))?;
@@ -28,8 +29,10 @@ impl Sink for ObsidianSink {
         let host = &capture.host;
         let formatted_start_long = get_formatted_time_long(capture.start_time);
         let formatted_start_short = get_formatted_time_short(capture.start_time);
+        let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
         let formatted_end_long = get_formatted_time_long(end_time);
-        let duration_ms = end_time.signed_duration_since(capture.start_time).num_milliseconds() as u64;
+        let duration_ms = capture.duration_ms;
+        let exit_code = capture.exit_code;
         let cmd = &capture.cmd;
         let cmd_short = get_short_command(cmd);
 
