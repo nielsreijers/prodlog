@@ -6,8 +6,10 @@ set -e
 PRODLOG_CMD_PREFIX=$'\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:'
 CMD_IS_INACTIVE="IS CURRENTLY INACTIVE"
 CMD_ARE_YOU_RUNNING="PRODLOG, ARE YOU RUNNING?"
-CMD_START_CAPTURE="START CAPTURE"
-CMD_STOP_CAPTURE="STOP CAPTURE"
+CMD_START_CAPTURE_RUN="START CAPTURE RUN"
+CMD_START_CAPTURE_EDIT="START CAPTURE EDIT"
+CMD_STOP_CAPTURE_RUN="STOP CAPTURE RUN"
+CMD_STOP_CAPTURE_EDIT="STOP CAPTURE EDIT"
 REPLY_YES_PRODLOG_IS_RUNNING="PRODLOG IS RUNNING"
 
 # Function to send commands to prodlog via stdout
@@ -28,27 +30,48 @@ send_command() {
 # Function to print help message
 print_help() {
     echo "Usage: $0 run [-m <message>] <command> [args...]"
-    echo "Record a command and its output in prodlog. An instance of prodlog_server must be running."
+    echo "       $0 edit [-m <message>] [-s] <filename>"
+    echo "Record a command or an edit session and its output in prodlog. An instance of prodlog_server must be running."
     echo ""
-    echo "  -m <message>   Optional message to log with the command."
+    echo "  -m <message>   Optional message to log with the command or edit."
+    echo "  -s             Use sudo to edit or run the command."
     echo ""
     echo "Testing if prodlog_server is running:"
     send_command "$CMD_IS_INACTIVE"
 }
 
+# Function to get base64-encoded file contents, or empty string if file doesn't exist
+get_file_contents() {
+    local file="$1"
+    if [[ $use_sudo -eq 1 ]]; then
+        if ! sudo test -f "$file"; then
+            echo ""
+        else
+            sudo base64 -w0 "$file"
+        fi        
+    else
+        if [[ ! -f "$file" ]]; then
+            echo ""
+        else
+            base64 -w0 "$file"
+        fi        
+    fi
+}
+
 # --- Main Script Logic ---
 
-# Check if the first argument is 'run'
-if [[ "$1" != "run" ]]; then
+# Check if the first argument is 'run' or 'edit'
+if [[ "$1" != "run" && "$1" != "edit" ]]; then
     print_help
     exit 1
 fi
 
-# Remove the 'run' argument
+mode="$1"
 shift
 
 # Parse options before the command
 message=""
+use_sudo=0
 while [[ "$1" == -* ]]; do
     case "$1" in
         -m)
@@ -58,6 +81,10 @@ while [[ "$1" == -* ]]; do
                 exit 1
             fi
             message="$1"
+            shift
+            ;;
+        -s)
+            use_sudo=1
             shift
             ;;
         --)
@@ -71,11 +98,20 @@ while [[ "$1" == -* ]]; do
     esac
 done
 
-# Check if a command was provided
-if [[ $# -eq 0 ]]; then
-    echo "Error: No command provided to run."
-    print_help
-    exit 1
+# Check if a command or filename was provided
+if [[ "$mode" == "run" ]]; then
+    if [[ $# -eq 0 ]]; then
+        echo "Error: No command provided to run."
+        print_help
+        exit 1
+    fi
+elif [[ "$mode" == "edit" ]]; then
+    if [[ $# -ne 1 ]]; then
+        echo "Error: In edit mode, you must provide exactly one filename to edit."
+        print_help
+        exit 1
+    fi
+    filename="$1"
 fi
 
 # Check if prodlog is running
@@ -84,12 +120,9 @@ send_command "$CMD_ARE_YOU_RUNNING" "2.2.0"
 # Read response from stdin with a 1-second timeout
 if ! read -t 1 response; then
     echo "Error: Timeout waiting for prodlog response. Is it running?" >&2
-    # Attempt to read any leftover partial input to clear buffer (optional)
-    # read -t 0.1 -n 10000 discard || true 
     exit 1
 fi
 
-# Trim potential leading/trailing whitespace (though python readline().strip() is more robust)
 response=$(echo "$response" | xargs) 
 
 if [[ "$response" != "$REPLY_YES_PRODLOG_IS_RUNNING" ]]; then
@@ -100,17 +133,47 @@ fi
 # Get metadata
 hostname=$(hostname)
 cwd=$(pwd)
-cmd_str="$*" # Capture the command and arguments as a single string
 
-# Send start marker
-send_command "$CMD_START_CAPTURE" "$hostname" "$cwd" "$cmd_str" "$message"
+# Send start marker depending on mode
+if [[ "$mode" == "run" ]]; then
+    if [[ $use_sudo -eq 1 ]]; then
+        cmd="sudo $*"
+    else
+        cmd="$*"
+    fi
+    send_command "$CMD_START_CAPTURE_RUN" "$hostname" "$cwd" "$cmd" "$message"
+    on_exit() {
+        exit_status=$?
+        send_command "$CMD_STOP_CAPTURE_RUN" "$exit_status"
+        exit $exit_status
+    }
+    trap on_exit EXIT
+    if [[ $use_sudo -eq 1 ]]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+elif [[ "$mode" == "edit" ]]; then
+    filename_fullpath="$(realpath -m "$filename")"
+    original_file_b64=$(get_file_contents "$filename_fullpath")
+    if [[ $use_sudo -eq 1 ]]; then
+        cmd="sudo ${EDITOR:-vi} $filename_fullpath"
+    else
+        cmd="${EDITOR:-vi} $filename_fullpath"
+    fi
+    send_command "$CMD_START_CAPTURE_EDIT" "$hostname" "$cwd" "$cmd" "$message" "$filename_fullpath" "$original_file_b64"
 
-# Trap function
-on_exit() {
-    exit_status=$?
-    send_command "$CMD_STOP_CAPTURE" "$exit_status"
-    exit $exit_status
-}
-trap on_exit EXIT
+    on_exit() {
+        exit_status=$?
+        edited_file_b64=$(get_file_contents "$filename_fullpath")
+        send_command "$CMD_STOP_CAPTURE_EDIT" "$exit_status" "$edited_file_b64"
+        exit $exit_status
+    }
+    trap on_exit EXIT
+    if [[ $use_sudo -eq 1 ]]; then
+        sudo "${EDITOR:-vi}" "$filename_fullpath"
+    else
+        "${EDITOR:-vi}" "$filename_fullpath"
+    fi
+fi
 
-"$@"

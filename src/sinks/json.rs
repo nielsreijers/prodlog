@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
 use crate::helpers;
-use crate::model::CaptureV2_2;
+use crate::model::{CaptureType, CaptureV2_2};
 use super::Sink;
 use uuid::Uuid;
 
@@ -88,6 +88,7 @@ fn v2_1_to_v2_2(data: ProdlogDataV2_1) -> ProdlogDataV2_2 {
     ProdlogDataV2_2 {
         prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
         entries: data.entries.into_iter().map(|e| CaptureV2_2 {
+            capture_type: CaptureType::Run,
             uuid: Uuid::new_v4(),
             start_time: chrono::DateTime::parse_from_rfc3339(&e.start_time).unwrap().with_timezone(&chrono::Utc),
             host: e.host,
@@ -96,7 +97,10 @@ fn v2_1_to_v2_2(data: ProdlogDataV2_1) -> ProdlogDataV2_2 {
             duration_ms: e.duration_ms,
             exit_code: e.exit_code,
             captured_output: helpers::base64_decode(&e.output),
-            message: "".to_string()
+            message: "".to_string(),
+            filename: "".to_string(),
+            original_content: "".as_bytes().to_vec(),
+            edited_content: "".as_bytes().to_vec(),
         }).collect(),
     }
 }

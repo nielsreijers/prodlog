@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use urlencoding;
+use similar::{TextDiff, ChangeTag};
+use html_escape;
 
 use crate::model::CaptureV2_2;
 
@@ -222,6 +224,7 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             <thead>
                 <tr>
                     <th>Time</th>
+                    <th>Type</th>
                     <th>Host</th>
                     <th>Command</th>
                     <th>Duration</th>
@@ -353,34 +356,43 @@ async fn index(
                 String::new()
             };
             let row_class = if entry.exit_code != 0 { " class=\"error-row\"" } else { "" };
-            let output_link = if let Some(output_filter) = &filters.output {
-                if !output_filter.is_empty() {
-                    format!(r#"output/{}?output={}"#, entry.uuid, urlencoding::encode(output_filter))
-                } else {
-                    format!(r#"output/{}"#, entry.uuid)
-                }
-            } else {
-                format!(r#"output/{}"#, entry.uuid)
+            let link = match entry.capture_type {
+                crate::model::CaptureType::Run => {
+                    let url =if let Some(output_filter) = &filters.output {
+                        if !output_filter.is_empty() {
+                            format!(r#"output/{}?output={}"#, entry.uuid, urlencoding::encode(output_filter))
+                        } else {
+                            format!(r#"output/{}"#, entry.uuid)
+                        }
+                    } else {
+                        format!(r#"output/{}"#, entry.uuid)
+                    };
+                    format!(r#"<a href="{}">View</a>"#, url)
+                },
+                crate::model::CaptureType::Edit => format!(r#"<a href="diff/{}">Diff</a>"#, entry.uuid),
+            };
+            let entry_type = match entry.capture_type {
+                crate::model::CaptureType::Run => "Run",
+                crate::model::CaptureType::Edit => "Edit",
             };
             format!(
                 r#"<tr{}>
                     <td>{}</td>
                     <td>{}</td>
                     <td>{}</td>
+                    <td>{}</td>
                     <td>{}ms</td>
                     <td>{}</td>
-                    <td>
-                        <a href="{}">View</a>
-                        {}
-                    </td>
+                    <td>{}{}</td>
                 </tr>"#,
                 row_class,
                 format_timestamp(&entry.start_time),
+                entry_type,
                 entry.host,
                 entry.cmd,
                 entry.duration_ms,
                 entry.exit_code,
-                output_link,
+                link,
                 preview_html
             )
         })
@@ -509,12 +521,82 @@ async fn view_output(
     }
 }
 
+fn simple_diff(orig: &str, edited: &str) -> String {
+    let diff = TextDiff::from_lines(orig, edited);
+    let mut html = String::new();
+    for change in diff.iter_all_changes() {
+        let (class, sign) = match change.tag() {
+            ChangeTag::Delete => ("diff-del", "-"),
+            ChangeTag::Insert => ("diff-ins", "+"),
+            ChangeTag::Equal => ("", " "),
+        };
+        html.push_str(&format!(
+            r#"<div class="{}"><span>{}</span>{}</div>"#,
+            class, sign, html_escape::encode_text(change.value())
+        ));
+    }
+    html
+}
+
+async fn view_diff(
+    State(state): State<Arc<PathBuf>>,
+    Path(uuid): Path<String>,
+) -> Html<String> {
+    let json_path = state.join("prodlog.json");
+    let data = match load_log_data(&json_path) {
+        Ok(data) => data,
+        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
+    };
+
+    let uuid = Uuid::parse_str(&uuid).unwrap();
+    let entry = data.iter().find(|e| e.uuid == uuid);
+    if let Some(entry) = entry {
+        if entry.capture_type != crate::model::CaptureType::Edit {
+            return Html("Not an edit entry".to_string());
+        }
+        let orig = String::from_utf8_lossy(&entry.original_content);
+        let edited = String::from_utf8_lossy(&entry.edited_content);
+        let diff_html = simple_diff(&orig, &edited);
+        Html(format!(
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>File Diff</title>
+    <style>
+        body {{ font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; background: #222; color: #eee; }}
+        .container {{ max-width: 900px; margin: 2rem auto; padding: 2rem; background: #292929; border-radius: 12px; }}
+        .diff-del {{ background: #ffebee; color: #b71c1c; }}
+        .diff-ins {{ background: #e8f5e9; color: #1b5e20; }}
+        .diff-del span, .diff-ins span {{ font-weight: bold; margin-right: 0.5em; }}
+        .back-link {{ margin-bottom: 1.5rem; }}
+        .back-link a {{ color: #90caf9; text-decoration: none; }}
+        .back-link a:hover {{ text-decoration: underline; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="back-link"><a href="/">← Back to list</a></div>
+        <h2>Diff for {}</h2>
+        <div style="white-space: pre-wrap;">{}</div>
+    </div>
+</body>
+</html>
+"#,
+            entry.filename,
+            diff_html
+        ))
+    } else {
+        Html(String::from("Entry not found"))
+    }
+}
+
 pub async fn run_ui(log_dir: &PathBuf, port: u16) {
     let app_state = Arc::new(log_dir.clone()); 
    
     let app = Router::new()
         .route("/", get(index))
         .route("/output/:uuid", get(view_output))
+        .route("/diff/:uuid", get(view_diff))
         .with_state(app_state);
 
     let addr = format!("0.0.0.0:{}", port);    
