@@ -1,0 +1,11 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+- Ignore all files in old-ai-generated-version
+- We're building a project that uses a local component to scrape pty so we can log commands we run on remote servers
+- The main trick we use is for the remore server component to print special tags to the output that are picked up by the local component. All output between START CAPTURE and STOP CAPTURE will be logged, as well as several pieces of meta data passed as arguments to the START CAPTURE tag.
