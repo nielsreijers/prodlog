@@ -197,6 +197,27 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
         tr.error-row {{
             background-color: #ffeaea !important;
         }}
+        .copy-button {{
+            background: none;
+            border: none;
+            color: var(--proton-text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+            margin-left: 0.5rem;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }}
+        .copy-button:hover {{
+            background-color: var(--proton-hover);
+            color: var(--proton-text);
+        }}
+        .copy-button svg {{
+            width: 16px;
+            height: 16px;
+        }}
+        .copy-button.copied {{
+            color: var(--proton-blue);
+        }}
     </style>
 </head>
 <body>
@@ -247,6 +268,17 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             localStorage.setItem('fullWidth', container.classList.contains('full-width'));
         }}
         
+        function copyButton(button, text) {{
+            navigator.clipboard.writeText(text).then(() => {{
+                button.classList.add('copied');
+                button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>';
+                setTimeout(() => {{
+                    button.classList.remove('copied');
+                    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 2.57A2 2 0 0014.685 2H10a2 2 0 00-2 2z"/><path d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2"/></svg>';
+                }}, 2000);
+            }});
+        }}
+
         // Restore preference on page load
         document.addEventListener('DOMContentLoaded', () => {{
             const container = document.getElementById('container');
@@ -375,12 +407,28 @@ async fn index(
                 crate::model::CaptureType::Run => "Run",
                 crate::model::CaptureType::Edit => "Edit",
             };
+            let copy_text = match entry.capture_type {
+                crate::model::CaptureType::Run => format!("prodlog run {}", entry.cmd),
+                crate::model::CaptureType::Edit => if entry.cmd.starts_with("sudo") {
+                    format!("sudo prodlog edit {}", entry.filename)
+                } else {
+                    format!("prodlog edit {}", entry.filename)                    
+                }
+            };
             format!(
                 r#"<tr{}>
                     <td>{}</td>
                     <td>{}</td>
                     <td>{}</td>
-                    <td>{}</td>
+                    <td>
+                        <button class="copy-button" onclick="copyButton(this, '{}')" title="Copy">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 2.57A2 2 0 0014.685 2H10a2 2 0 00-2 2z"/>
+                                <path d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2"/>
+                            </svg>
+                        </button>
+                        {}
+                    </td>
                     <td>{}ms</td>
                     <td>{}</td>
                     <td>{}{}</td>
@@ -389,6 +437,7 @@ async fn index(
                 format_timestamp(&entry.start_time),
                 entry_type,
                 entry.host,
+                copy_text,
                 entry.cmd,
                 entry.duration_ms,
                 entry.exit_code,
