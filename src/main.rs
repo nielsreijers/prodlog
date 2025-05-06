@@ -2,6 +2,7 @@ use nix::sys::wait::waitpid;
 use std::fs::File;
 use std::io::{ Read, Stdout, Write };
 use std::os::fd::{ AsRawFd, RawFd };
+use std::sync::Arc;
 use termion::raw::{ IntoRawMode, RawTerminal };
 use termion::input::TermReadEventsAndRaw;
 use nix::pty::{ ForkptyResult, Winsize };
@@ -460,7 +461,8 @@ async fn main() {
     let ui_dir = prodlog_dir.clone();
     let ui_port = cli_args.port;
     tokio::spawn(async move {
-        ui::run_ui(&ui_dir, ui_port).await;
+        let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
+        ui::run_ui(sink, ui_port).await;
     });
 
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {

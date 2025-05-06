@@ -31,3 +31,9 @@ pub struct CaptureV2_2 {
     #[serde_as(as = "Base64")]
     pub edited_content: Vec<u8>,
 }
+
+impl CaptureV2_2 {
+    pub fn output_as_string(&self) -> String {
+        String::from_utf8(self.captured_output.clone()).unwrap()
+    }
+}

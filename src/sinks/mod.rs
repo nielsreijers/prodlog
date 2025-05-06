@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
+use uuid::Uuid;
 use crate::model::CaptureV2_2;
 
 
@@ -8,6 +10,19 @@ pub mod sqlite;
 
 pub trait Sink {
     fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error>;
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct Filters {
+    pub date: Option<String>,
+    pub host: Option<String>,
+    pub command: Option<String>,
+    pub output: Option<String>,
+}
+
+pub trait UiSink: Send + Sync {
+    fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_2>, std::io::Error>;
+    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_2>, std::io::Error>;
 }
 
 fn get_short_command(cmd: &str) -> String {

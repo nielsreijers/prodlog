@@ -4,32 +4,16 @@ use axum::{
     response::Html,
     extract::{State, Query, Path},
 };
-use serde::Deserialize;
 use uuid::Uuid;
-use std::path::PathBuf;
 use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use urlencoding;
 use similar::{TextDiff, ChangeTag};
 use html_escape;
 
-use crate::model::CaptureV2_2;
+use crate::{model::CaptureV2_2, sinks::{Filters, UiSink}};
 
 mod ansi_to_html;
-
-fn load_log_data(json_path: &PathBuf) -> Result<Vec<CaptureV2_2>, std::io::Error> {
-    let data = crate::sinks::json::read_prodlog_data(json_path)?;
-    Ok(data.entries)
-}
-
-// Add query parameters struct for filters
-#[derive(Deserialize, Debug, Default)]
-struct Filters {
-    date: Option<String>,
-    host: Option<String>,
-    command: Option<String>,
-    output: Option<String>,
-}
 
 fn generate_html(table_rows: &str, filters: &Filters) -> String {
     format!(r#"
@@ -311,69 +295,37 @@ fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
     timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()
 }
 
-fn output_to_string(output: Vec<u8>) -> String {
-    String::from_utf8(output.clone()).unwrap()
-}
-
 async fn index(
-    State(state): State<Arc<PathBuf>>,
+    State(sink): State<Arc<dyn UiSink>>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
-    // Read the JSON file
-    let json_path = state.join("prodlog.json");
-    let data = match load_log_data(&json_path) {
+    let data = match sink.get_entries(&filters) {
         Ok(data) => data,
         Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
     };
 
-    // Filter entries
-    let mut filtered_entries = Vec::new();
-    
-    for entry in &data {
-        // Apply date, host, and command filters
-        if let Some(date) = &filters.date {
-            if !entry.start_time.to_rfc3339().starts_with(date) {
-                continue;
-            }
-        }
-        
-        if let Some(host) = &filters.host {
-            if !entry.host.to_lowercase().contains(&host.to_lowercase()) {
-                continue;
-            }
-        }
-        
-        if let Some(command) = &filters.command {
-            if !entry.cmd.to_lowercase().contains(&command.to_lowercase()) {
-                continue;
-            }
-        }
-
-        // Check output content if output filter is present
-        if let Some(output_filter) = &filters.output {
-            if !output_filter.is_empty() {
-                let output_content = output_to_string(entry.captured_output.clone());
-                if !output_content.to_lowercase().contains(&output_filter.to_lowercase()) {
-                    continue;
-                }
-                // Add preview of matching output_content
+    let mut entries: Vec<(CaptureV2_2, Option<String>)> = if let Some(output_filter) = &filters.output {
+        if !output_filter.is_empty() {
+            data.into_iter().map(|entry| {
+                let output_content = entry.output_as_string();
                 let idx = output_content.to_lowercase().find(&output_filter.to_lowercase()).unwrap();
                 let start = idx.saturating_sub(50);
                 let end = (idx + output_filter.len() + 50).min(output_content.len());
                 let preview = output_content[start..end].to_string();
-                filtered_entries.push((entry, Some(preview)));
-                continue;
-            }
+                (entry, Some(preview)
+            )}).collect()            
+        } else {
+            data.into_iter().map(|entry| (entry, None)).collect()
         }
-        
-        filtered_entries.push((entry, None));
-    }
-
-    filtered_entries.sort_by_key(| entry | &entry.0.start_time);
-    filtered_entries.reverse();
+    } else {
+        data.into_iter().map(|entry| (entry, None)).collect()
+    };
+    
+    entries.sort_by_key(| entry | entry.0.start_time);
+    entries.reverse();
 
     // Generate table rows
-    let rows = filtered_entries.iter()
+    let rows = entries.iter()
         .map(|(entry, preview)| {
             let preview_html = if let Some(preview) = preview {
                 if let Some(output_filter) = &filters.output {
@@ -461,7 +413,7 @@ fn generate_output_html(entry: &CaptureV2_2, output_filter: Option<&str>) -> Str
     let host = &entry.host;
     let command = &entry.cmd;
 
-    let decoded_output = output_to_string(entry.captured_output.clone());
+    let decoded_output = entry.output_as_string();
     let html_output = ansi_to_html::ansi_to_html(&decoded_output);
     let highlighted_output = if let Some(filter) = output_filter {
         highlight_matches(&html_output, filter)
@@ -550,23 +502,22 @@ r#"<!DOCTYPE html>
 }
 
 async fn view_output(
-    State(state): State<Arc<PathBuf>>,
+    State(sink): State<Arc<dyn UiSink>>,
     Path(uuid): Path<String>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
-    let json_path = state.join("prodlog.json");
-    let data = match load_log_data(&json_path) {
-        Ok(data) => data,
-        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
-    };
-
-    // Find the entry with the matching uuid
     let uuid = Uuid::parse_str(&uuid).unwrap();
-    let entry = data.iter().find(|e| e.uuid == uuid);
-    if let Some(entry) = entry {
-        Html(generate_output_html(entry, filters.output.as_deref()))
-    } else {
-        Html(String::from("Entry not found"))
+    let entry = sink.get_entry_by_id(uuid);
+
+    match entry {
+        Ok(entry) => {
+            if let Some(entry) = entry {
+                Html(generate_output_html(&entry, filters.output.as_deref()))
+            } else {
+                Html(String::from("Entry not found"))
+            }        
+        },
+        Err(err) => return Html(format!("Error loading log data: {}", err)),
     }
 }
 
@@ -587,66 +538,68 @@ fn simple_diff(orig: &str, edited: &str) -> String {
     html
 }
 
-async fn view_diff(
-    State(state): State<Arc<PathBuf>>,
-    Path(uuid): Path<String>,
-) -> Html<String> {
-    let json_path = state.join("prodlog.json");
-    let data = match load_log_data(&json_path) {
-        Ok(data) => data,
-        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
-    };
-
-    let uuid = Uuid::parse_str(&uuid).unwrap();
-    let entry = data.iter().find(|e| e.uuid == uuid);
-    if let Some(entry) = entry {
-        if entry.capture_type != crate::model::CaptureType::Edit {
-            return Html("Not an edit entry".to_string());
-        }
-        let orig = String::from_utf8_lossy(&entry.original_content);
-        let edited = String::from_utf8_lossy(&entry.edited_content);
-        let diff_html = simple_diff(&orig, &edited);
-        Html(format!(
-            r#"<!DOCTYPE html>
+fn generate_diff_html(entry: &CaptureV2_2) -> String {
+    if entry.capture_type != crate::model::CaptureType::Edit {
+        return "Not an edit entry".to_string();
+    }
+    let orig = String::from_utf8_lossy(&entry.original_content);
+    let edited = String::from_utf8_lossy(&entry.edited_content);
+    let diff_html = simple_diff(&orig, &edited);
+    format!(
+        r#"<!DOCTYPE html>
 <html>
 <head>
-    <title>File Diff</title>
-    <style>
-        body {{ font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; background: #222; color: #eee; }}
-        .container {{ max-width: 900px; margin: 2rem auto; padding: 2rem; background: #292929; border-radius: 12px; }}
-        .diff-del {{ background: #ffebee; color: #b71c1c; }}
-        .diff-ins {{ background: #e8f5e9; color: #1b5e20; }}
-        .diff-del span, .diff-ins span {{ font-weight: bold; margin-right: 0.5em; }}
-        .back-link {{ margin-bottom: 1.5rem; }}
-        .back-link a {{ color: #90caf9; text-decoration: none; }}
-        .back-link a:hover {{ text-decoration: underline; }}
-    </style>
+<title>File Diff</title>
+<style>
+    body {{ font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; background: #222; color: #eee; }}
+    .container {{ max-width: 900px; margin: 2rem auto; padding: 2rem; background: #292929; border-radius: 12px; }}
+    .diff-del {{ background: #ffebee; color: #b71c1c; }}
+    .diff-ins {{ background: #e8f5e9; color: #1b5e20; }}
+    .diff-del span, .diff-ins span {{ font-weight: bold; margin-right: 0.5em; }}
+    .back-link {{ margin-bottom: 1.5rem; }}
+    .back-link a {{ color: #90caf9; text-decoration: none; }}
+    .back-link a:hover {{ text-decoration: underline; }}
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="back-link"><a href="/">← Back to list</a></div>
-        <h2>Diff for {}</h2>
-        <div style="white-space: pre-wrap;">{}</div>
-    </div>
+<div class="container">
+    <div class="back-link"><a href="/">← Back to list</a></div>
+    <h2>Diff for {}</h2>
+    <div style="white-space: pre-wrap;">{}</div>
+</div>
 </body>
 </html>
 "#,
-            entry.filename,
-            diff_html
-        ))
-    } else {
-        Html(String::from("Entry not found"))
+        entry.filename,
+        diff_html
+    )
+}
+
+async fn view_diff(
+    State(sink): State<Arc<dyn UiSink>>,
+    Path(uuid): Path<String>,
+) -> Html<String> {
+    let uuid = Uuid::parse_str(&uuid).unwrap();
+    let entry = sink.get_entry_by_id(uuid);
+
+    match entry {
+        Ok(entry) => {
+            if let Some(entry) = entry {
+                Html(generate_diff_html(&entry))
+            } else {
+                Html(String::from("Entry not found"))
+            }        
+        },
+        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
     }
 }
 
-pub async fn run_ui(log_dir: &PathBuf, port: u16) {
-    let app_state = Arc::new(log_dir.clone()); 
-   
+pub async fn run_ui(sink: Arc<dyn UiSink>, port: u16) {
     let app = Router::new()
         .route("/", get(index))
         .route("/output/:uuid", get(view_output))
         .route("/diff/:uuid", get(view_diff))
-        .with_state(app_state);
+        .with_state(sink);
 
     let addr = format!("0.0.0.0:{}", port);    
     match tokio::net::TcpListener::bind(addr).await {

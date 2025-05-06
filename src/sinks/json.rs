@@ -4,7 +4,7 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 use crate::helpers;
 use crate::model::{CaptureType, CaptureV2_2};
-use super::Sink;
+use super::{Sink, UiSink};
 use uuid::Uuid;
 
 pub struct JsonSink {
@@ -137,5 +137,53 @@ impl Sink for JsonSink {
         fs::write(&self.prodlog_file, serde_json::to_string_pretty(&prodlog_data)?)?;
 
         Ok(())
+    }
+}
+
+impl UiSink for JsonSink {
+    fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_2>, std::io::Error> {
+        let data = read_prodlog_data(&self.prodlog_file)?;
+            let mut filtered_entries = Vec::new();
+        
+        for entry in data.entries.into_iter() {
+            // Apply date, host, and command filters
+            if let Some(date) = &filters.date {
+                if !entry.start_time.to_rfc3339().starts_with(date) {
+                    continue;
+                }
+            }
+            
+            if let Some(host) = &filters.host {
+                if !entry.host.to_lowercase().contains(&host.to_lowercase()) {
+                    continue;
+                }
+            }
+            
+            if let Some(command) = &filters.command {
+                if !entry.cmd.to_lowercase().contains(&command.to_lowercase()) {
+                    continue;
+                }
+            }
+    
+            // Check output content if output filter is present
+            if let Some(output_filter) = &filters.output {
+                if !output_filter.is_empty() {
+                    let output_content = entry.output_as_string();
+                    if !output_content.to_lowercase().contains(&output_filter.to_lowercase()) {
+                        continue;
+                    }
+                }
+            }
+            
+            filtered_entries.push(entry);
+        }
+
+        Ok(filtered_entries)
+    }
+
+    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_2>, std::io::Error> {
+        let data = read_prodlog_data(&self.prodlog_file)?;
+        let entry = data.entries.into_iter().find(|e| e.uuid == uuid);
+        Ok(entry)
     }
 }
