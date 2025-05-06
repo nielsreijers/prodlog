@@ -461,7 +461,8 @@ async fn main() {
     let ui_dir = prodlog_dir.clone();
     let ui_port = cli_args.port;
     tokio::spawn(async move {
-        let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
+        // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
+        let sink = Arc::new(sinks::sqlite::SqliteSink::new(ui_dir).unwrap());
         ui::run_ui(sink, ui_port).await;
     });
 
