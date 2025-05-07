@@ -18,9 +18,7 @@ impl JsonSink {
         // Check the file is valid so we don't crash while logging a command if it's not
         read_prodlog_data(&prodlog_file).unwrap();
         return Self { prodlog_file };
-    }
-
-    
+    }    
 }
 
 #[derive(Serialize, Deserialize)]

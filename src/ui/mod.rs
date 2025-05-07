@@ -362,7 +362,7 @@ async fn index(
             let copy_text = match entry.capture_type {
                 crate::model::CaptureType::Run => format!("prodlog run {}", entry.cmd),
                 crate::model::CaptureType::Edit => if entry.cmd.starts_with("sudo") {
-                    format!("sudo prodlog edit {}", entry.filename)
+                    format!("prodlog edit -s {}", entry.filename)
                 } else {
                     format!("prodlog edit {}", entry.filename)                    
                 }
