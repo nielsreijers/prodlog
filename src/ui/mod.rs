@@ -11,7 +11,7 @@ use urlencoding;
 use similar::{TextDiff, ChangeTag};
 use html_escape;
 
-use crate::{model::CaptureV2_2, sinks::{Filters, UiSink}};
+use crate::{model::{CaptureType, CaptureV2_2}, sinks::{Filters, UiSink}};
 
 mod ansi_to_html;
 
@@ -403,16 +403,110 @@ async fn index(
     Html(generate_html(&rows, &filters))
 }
 
-fn generate_output_html(entry: &CaptureV2_2, output_filter: Option<&str>) -> String {
-    // Format times
+fn generate_entry_header(entry: &CaptureV2_2) -> String {
+    let host = &entry.host;
+    let cmd = &entry.cmd;
+    let cwd = &entry.cwd;
     let start = format_timestamp(&entry.start_time);
     let end_time = entry.start_time + Duration::milliseconds(entry.duration_ms as i64);
     let end =  format_timestamp(&end_time);
     let duration = entry.duration_ms;
     let exit = entry.exit_code;
-    let host = &entry.host;
-    let command = &entry.cmd;
+    let message = if !entry.message.is_empty() {
+        format!("Message:   {}\n", entry.message)
+    } else {
+        String::new()
+    };
+    let diff_or_output = if entry.capture_type == CaptureType::Edit {
+        format!("<h2>{}</h2>", entry.filename)
+    } else {
+        format!("<h2>{}</h2>", entry.cmd)
+    };
+    format!("
+<pre>
+Host:      {host}
+Command:   {cmd}
+Directory: {cwd}
+Start:     {start}
+End:       {end}
+Duration:  {duration}ms
+ExitCode:  {exit}
+{message}
+{diff_or_output}
+</pre>
+    ")
+}
 
+const CSS: &str = r#"
+    <style>
+        :root {
+            --proton-blue: #6D4AFF;
+            --proton-background: #1C1B1F;
+            --proton-text: #FFFFFF;
+            --proton-text-secondary: #A0A0A0;
+            --proton-border: #2D2D2D;
+        }
+        body { 
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            margin: 0;
+            padding: 0;
+            background-color: var(--proton-background);
+            color: var(--proton-text);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .command-output { 
+            white-space: pre-wrap;
+            margin: 0;
+            padding: 1.5rem;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        .back-link { 
+            margin-bottom: 1.5rem; 
+        }
+        .back-link a {
+            color: var(--proton-text-secondary);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            transition: color 0.2s ease;
+        }
+        .back-link a:hover {
+            color: var(--proton-text);
+        }
+        .match-highlight { 
+            background-color: #ffeb3b;
+            color: #222;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-weight: bold;
+            box-shadow: 0 0 0 2px #fff59d;
+        }
+        .diff-del {
+            background: #ffebee;
+            color: #b71c1c;
+        }
+        .diff-ins {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+        .diff-del span, .diff-ins span {
+            font-weight: bold;
+            margin-right: 0.5em;
+        }
+    </style>
+"#;
+
+fn generate_output_html(entry: &CaptureV2_2, output_filter: Option<&str>) -> String {
+    let header = generate_entry_header(entry);
     let decoded_output = entry.output_as_string();
     let html_output = ansi_to_html::ansi_to_html(&decoded_output);
     let highlighted_output = if let Some(filter) = output_filter {
@@ -426,74 +520,14 @@ r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Output View</title>
-    <style>
-        :root {{
-            --proton-blue: #6D4AFF;
-            --proton-background: #1C1B1F;
-            --proton-text: #FFFFFF;
-            --proton-text-secondary: #A0A0A0;
-            --proton-border: #2D2D2D;
-        }}
-        body {{ 
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-            margin: 0;
-            padding: 0;
-            background-color: var(--proton-background);
-            color: var(--proton-text);
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-        }}
-        .command-output {{ 
-            white-space: pre-wrap;
-            margin: 0;
-            padding: 1.5rem;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            font-size: 0.875rem;
-            line-height: 1.5;
-        }}
-        .back-link {{ 
-            margin-bottom: 1.5rem; 
-        }}
-        .back-link a {{
-            color: var(--proton-text-secondary);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.875rem;
-            transition: color 0.2s ease;
-        }}
-        .back-link a:hover {{
-            color: var(--proton-text);
-        }}
-        .match-highlight {{ 
-            background-color: #ffeb3b;
-            color: #222;
-            padding: 2px 4px;
-            border-radius: 4px;
-            font-weight: bold;
-            box-shadow: 0 0 0 2px #fff59d;
-        }}
-    </style>
+    {CSS}
 </head>
 <body>
     <div class="container">
         <div class="back-link">
             <a href="/">← Back to list</a>
         </div>
-        <pre>
-        Host:     {host}
-        Command:  {command}
-        Start:    {start}
-        End:      {end}
-        Duration: {duration}ms
-        ExitCode: {exit}
-        Output:
-        </pre>
+        {header}
         <pre class="command-output">{highlighted_output}</pre>
     </div>
 </body>
@@ -542,37 +576,28 @@ fn generate_diff_html(entry: &CaptureV2_2) -> String {
     if entry.capture_type != crate::model::CaptureType::Edit {
         return "Not an edit entry".to_string();
     }
+    let header = generate_entry_header(entry);
     let orig = String::from_utf8_lossy(&entry.original_content);
     let edited = String::from_utf8_lossy(&entry.edited_content);
     let diff_html = simple_diff(&orig, &edited);
     format!(
-        r#"<!DOCTYPE html>
+r#"<!DOCTYPE html>
 <html>
 <head>
-<title>File Diff</title>
-<style>
-    body {{ font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; background: #222; color: #eee; }}
-    .container {{ max-width: 900px; margin: 2rem auto; padding: 2rem; background: #292929; border-radius: 12px; }}
-    .diff-del {{ background: #ffebee; color: #b71c1c; }}
-    .diff-ins {{ background: #e8f5e9; color: #1b5e20; }}
-    .diff-del span, .diff-ins span {{ font-weight: bold; margin-right: 0.5em; }}
-    .back-link {{ margin-bottom: 1.5rem; }}
-    .back-link a {{ color: #90caf9; text-decoration: none; }}
-    .back-link a:hover {{ text-decoration: underline; }}
-</style>
+    <title>File Diff</title>
+    {CSS}
 </head>
 <body>
-<div class="container">
-    <div class="back-link"><a href="/">← Back to list</a></div>
-    <h2>Diff for {}</h2>
-    <div style="white-space: pre-wrap;">{}</div>
-</div>
+    <div class="container">
+        <div class="back-link">
+            <a href="/">← Back to list</a>
+        </div>
+        {header}
+        <pre class="command-output">{diff_html}</pre>
+    </div>
 </body>
 </html>
-"#,
-        entry.filename,
-        diff_html
-    )
+"#)
 }
 
 async fn view_diff(
