@@ -5,7 +5,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 use std::path::PathBuf;
 use crate::model::{CaptureType, CaptureV2_2};
-use super::{Sink, UiSink};
+use super::{Sink, UiSource};
 use r2d2_sqlite::SqliteConnectionManager;
 
 pub struct SqliteSink {
@@ -93,7 +93,7 @@ fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_2> {
     })
 }
 
-impl UiSink for SqliteSink {
+impl UiSource for SqliteSink {
     fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_2>, std::io::Error> {
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         

@@ -4,7 +4,7 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 use crate::helpers;
 use crate::model::{CaptureType, CaptureV2_2};
-use super::{Sink, UiSink};
+use super::{Sink, UiSource};
 use uuid::Uuid;
 
 pub struct JsonSink {
@@ -138,7 +138,7 @@ impl Sink for JsonSink {
     }
 }
 
-impl UiSink for JsonSink {
+impl UiSource for JsonSink {
     fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_2>, std::io::Error> {
         let data = read_prodlog_data(&self.prodlog_file)?;
             let mut filtered_entries = Vec::new();

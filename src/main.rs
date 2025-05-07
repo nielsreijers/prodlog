@@ -35,19 +35,14 @@ const CMD_STOP_CAPTURE_RUN: &str = "STOP CAPTURE RUN";
 const CMD_STOP_CAPTURE_EDIT: &str = "STOP CAPTURE EDIT";
 const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
 
-/// Your application's description (optional but good practice)
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Add metadata
 struct CliArgs {
-    /// Sets the directory for production logs.
     #[arg(long, value_name = "DIR", default_value = ".local/share/prodlog")]
     dir: PathBuf,
 
-    /// Sets the port for the web UI.
     #[arg(long, value_name = "PORT", default_value = "5000")]
     port: u16,
-
-    // Add other command-line arguments here if needed
 }
 
 enum StreamState {

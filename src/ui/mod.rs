@@ -11,7 +11,7 @@ use urlencoding;
 use similar::{TextDiff, ChangeTag};
 use html_escape;
 
-use crate::{model::{CaptureType, CaptureV2_2}, sinks::{Filters, UiSink}};
+use crate::{model::{CaptureType, CaptureV2_2}, sinks::{Filters, UiSource}};
 
 mod ansi_to_html;
 
@@ -296,7 +296,7 @@ fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
 }
 
 async fn index(
-    State(sink): State<Arc<dyn UiSink>>,
+    State(sink): State<Arc<dyn UiSource>>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
     let data = match sink.get_entries(&filters) {
@@ -536,7 +536,7 @@ r#"<!DOCTYPE html>
 }
 
 async fn view_output(
-    State(sink): State<Arc<dyn UiSink>>,
+    State(sink): State<Arc<dyn UiSource>>,
     Path(uuid): Path<String>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
@@ -601,7 +601,7 @@ r#"<!DOCTYPE html>
 }
 
 async fn view_diff(
-    State(sink): State<Arc<dyn UiSink>>,
+    State(sink): State<Arc<dyn UiSource>>,
     Path(uuid): Path<String>,
 ) -> Html<String> {
     let uuid = Uuid::parse_str(&uuid).unwrap();
@@ -619,7 +619,7 @@ async fn view_diff(
     }
 }
 
-pub async fn run_ui(sink: Arc<dyn UiSink>, port: u16) {
+pub async fn run_ui(sink: Arc<dyn UiSource>, port: u16) {
     let app = Router::new()
         .route("/", get(index))
         .route("/output/:uuid", get(view_output))
