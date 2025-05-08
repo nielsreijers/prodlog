@@ -1,4 +1,5 @@
 use nix::sys::wait::waitpid;
+use termion::color::Color;
 use std::fs::File;
 use std::io::{ Read, Stdout, Write };
 use std::os::fd::{ AsRawFd, RawFd };
@@ -38,11 +39,14 @@ const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Add metadata
 struct CliArgs {
-    #[arg(long, value_name = "DIR", default_value = ".local/share/prodlog")]
+    #[arg(long, value_name = "DIR", default_value = ".local/share/prodlog", help = "Directory to store production logs")]
     dir: PathBuf,
 
-    #[arg(long, value_name = "PORT", default_value = "5000")]
+    #[arg(long, value_name = "PORT", default_value = "5000", help = "Port to run the UI on")]
     port: u16,
+
+    #[arg(long, value_name = "IMPORT", default_value = None, help = "Import a prodlog json or sqlite file")]
+    import: Option<String>,
 }
 
 enum StreamState {
@@ -64,14 +68,27 @@ struct StdoutHandler {
 }
 
 // TODO unify these different ways of printing messages
-fn print_prodlog_message(msg: &str) {
+fn prodlog_print<C: Color>(msg: &str, color: C) {
     print!("{}\n\r", format!("{}{}{}{}{}{}",
         style::Bold,
-        color::Fg(color::Green),
+        color::Fg(color),
         style::Blink,
         "PRODLOG: ",
         style::Reset,
         msg));
+}
+
+fn prodlog_panic(msg: &str) -> ! {
+    prodlog_print(msg, color::Red);
+    std::process::exit(1);
+}
+
+fn print_prodlog_warning(msg: &str) {
+    prodlog_print(msg, color::Yellow);
+}
+
+fn print_prodlog_message(msg: &str) {
+    prodlog_print(msg, color::Green);
 }
 
 impl StdoutHandler {
@@ -179,7 +196,7 @@ impl StdoutHandler {
                 StreamState::Completed(cmd, args, pos)
             }
         } else {
-            panic!("Invalid state");
+            prodlog_panic("Invalid state");
         }
     }
 
@@ -353,8 +370,19 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+fn get_sinks(prodlog_dir: &PathBuf) -> Vec<Box<dyn sinks::Sink>> {
+    fs::create_dir_all(prodlog_dir).expect("Failed to create directory");
+    let json_file = prodlog_dir.join("prodlog.json");
+    let sqlite_file = prodlog_dir.join("prodlog.sqlite");
+    vec![
+        Box::new(sinks::obsidian::ObsidianSink::new(&prodlog_dir)),
+        Box::new(sinks::json::JsonSink::new(&json_file)),
+        Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file).unwrap()),
+    ]
+}
+
 async fn run_parent(
-    prodlog_dir: &PathBuf,
+    sinks: Vec<Box<dyn sinks::Sink>>,
     child: nix::unistd::Pid,
     master: std::os::fd::OwnedFd
 ) -> Result<(), std::io::Error> {
@@ -393,14 +421,8 @@ async fn run_parent(
     });
 
     // Start forwarding the child's stdout to our stdout.
-    let prodlog_dir = prodlog_dir.clone();
     let _forward_stdout = tokio::task::spawn_blocking(move || {
         let mut buffer = [0; 1024];
-        let sinks: Vec<Box<dyn sinks::Sink>> = vec![
-            Box::new(sinks::json::JsonSink::new(prodlog_dir.clone())),
-            Box::new(sinks::obsidian::ObsidianSink::new(prodlog_dir.clone())),
-            Box::new(sinks::sqlite::SqliteSink::new(prodlog_dir.clone()).unwrap()),
-        ];
         let mut stream_handler = StdoutHandler::new(child_stdin_tx2, raw_stdout, sinks);
         loop {
             let n = raw_master_read.read(&mut buffer);
@@ -434,6 +456,42 @@ async fn run_parent(
     Ok(())
 }
 
+fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+    let import_file = PathBuf::from(import_file);
+        
+    if !import_file.exists() {
+        prodlog_panic(&format!("Error: Import file {:?} does not exist", import_file));
+    }
+
+    print_prodlog_message(&format!("Importing from {:?}", import_file));
+    let source_sink: Box<dyn sinks::UiSource> = match import_file.extension().unwrap_or_default().to_str().unwrap_or_default() {
+        "json" => {
+            Box::new(sinks::json::JsonSink::new(&import_file))
+        },
+        "sqlite" => {
+            // TODO: copy to tmp file so we don't modify the original if the schema changed.
+            Box::new(sinks::sqlite::SqliteSink::new(&import_file)?)
+        },
+        _ => {
+            prodlog_panic(&format!("Error: Import file must be .json or .sqlite, got {:?}", import_file));
+        }
+    };
+
+    // Import all entries from source
+    let entries = source_sink.get_entries(&sinks::Filters::default())?;
+    print_prodlog_message(&format!("Found {} entries to import", entries.len()));
+    for entry in entries {
+        for sink in sinks.iter_mut() {
+            if let Err(e) = sink.add_entry(&entry) {
+                print_prodlog_warning(&format!("Error writing entry {} to sink: {}", entry.uuid, e));
+            }
+        }
+    }
+    print_prodlog_message("Import done.");
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let cli_args = CliArgs::parse();
@@ -447,23 +505,27 @@ async fn main() {
         home_dir.join(&cli_args.dir)
     };
     print_prodlog_message(&format!("prodlog logging to {:?}", prodlog_dir));
+    
+    // Create the directory doesn't exist
+    let mut sinks = get_sinks(&prodlog_dir);
 
-    
-    // Create the directory if it doesn't exist
-    fs::create_dir_all(&prodlog_dir).expect("Failed to create directory");
-    
+    // Import a prodlog json or sqlite file if specified2
+    if let Some(import_file) = cli_args.import {
+        import(&import_file, &mut sinks).unwrap();
+    }
+
     // Start the UI in a separate task
-    let ui_dir = prodlog_dir.clone();
     let ui_port = cli_args.port;
     tokio::spawn(async move {
         // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
-        let sink = Arc::new(sinks::sqlite::SqliteSink::new(ui_dir).unwrap());
+        let sqlite_file = prodlog_dir.join("prodlog.sqlite");
+        let sink = Arc::new(sinks::sqlite::SqliteSink::new(&sqlite_file).unwrap());
         ui::run_ui(sink, ui_port).await;
     });
 
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
         ForkptyResult::Child => run_child(),
-        ForkptyResult::Parent { child, master } => { run_parent(&prodlog_dir, child, master).await }
+        ForkptyResult::Parent { child, master } => { run_parent(sinks, child, master).await }
     };
     if let Err(e) = result {
         print_prodlog_message(&format!("PRODLOG EXITING WITH ERROR: {}", e));

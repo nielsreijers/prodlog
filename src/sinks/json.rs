@@ -1,8 +1,8 @@
-use core::panic;
 use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
 use crate::helpers;
+use crate::prodlog_panic;
 use crate::model::{CaptureType, CaptureV2_2};
 use super::{Sink, UiSource};
 use uuid::Uuid;
@@ -12,11 +12,10 @@ pub struct JsonSink {
 }
 
 impl JsonSink {
-    pub fn new(prodlog_dir: PathBuf) -> Self {
-        std::fs::create_dir_all(prodlog_dir.clone()).unwrap();
-        let prodlog_file = prodlog_dir.join("prodlog.json");
+    pub fn new(prodlog_file: &PathBuf) -> Self {
         // Check the file is valid so we don't crash while logging a command if it's not
-        read_prodlog_data(&prodlog_file).unwrap();
+        read_prodlog_data(prodlog_file).unwrap();
+        let prodlog_file = prodlog_file.clone();
         return Self { prodlog_file };
     }    
 }
@@ -115,7 +114,7 @@ pub fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_2, std::io
         if let Ok(data) = serde_json::from_str(&content) {
             return Ok(v2_1_to_v2_2(v2_0_to_v2_1(data)));
         }
-        panic!("Failed to read prodlog data from {}", json_path.display());
+        prodlog_panic(&format!("Failed to read prodlog data from {}", json_path.display()));
     } else {
         Ok(ProdlogDataV2_2 {
             prodlog_version: env!("CARGO_PKG_VERSION").to_string(),

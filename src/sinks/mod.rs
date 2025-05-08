@@ -8,7 +8,7 @@ pub mod obsidian;
 pub mod json;
 pub mod sqlite;
 
-pub trait Sink {
+pub trait Sink: Send + Sync {
     fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error>;
 }
 

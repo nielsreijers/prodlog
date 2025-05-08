@@ -13,10 +13,9 @@ pub struct SqliteSink {
 }
 
 impl SqliteSink {
-    pub fn new(prodlog_dir: PathBuf) -> Result<Self, std::io::Error> {
-        std::fs::create_dir_all(prodlog_dir.clone()).unwrap();
-        let prodlog_db_file = prodlog_dir.join("prodlog.sqlite");
-        let manager = SqliteConnectionManager::file(prodlog_db_file);
+    pub fn new(prodlog_file: &PathBuf) -> Result<Self, std::io::Error> {
+        let prodlog_file = prodlog_file.clone();
+        let manager = SqliteConnectionManager::file(prodlog_file);
         let pool = r2d2::Pool::new(manager).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         // Initialize the database schema

@@ -9,7 +9,8 @@ pub struct ObsidianSink {
 }
 
 impl ObsidianSink {
-    pub fn new(prodlog_dir: PathBuf) -> Self {
+    pub fn new(prodlog_dir: &PathBuf) -> Self {
+        let prodlog_dir = prodlog_dir.clone();
         Self { prodlog_dir }
     }
 }
