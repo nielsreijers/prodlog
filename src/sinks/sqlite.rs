@@ -1,10 +1,12 @@
 use chrono::Duration;
+use r2d2::PooledConnection;
 use rusqlite::params;
 use rusqlite::Error::QueryReturnedNoRows;
+use rusqlite::OptionalExtension;
 use std::sync::Arc;
 use uuid::Uuid;
 use std::path::PathBuf;
-use crate::model::{CaptureType, CaptureV2_2};
+use crate::{model::{CaptureType, CaptureV2_2}, prodlog_panic};
 use super::{Sink, UiSource};
 use r2d2_sqlite::SqliteConnectionManager;
 
@@ -13,33 +15,91 @@ pub struct SqliteSink {
 }
 
 impl SqliteSink {
-    pub fn new(prodlog_file: &PathBuf) -> Result<Self, std::io::Error> {
-        let prodlog_file = prodlog_file.clone();
-        let manager = SqliteConnectionManager::file(prodlog_file);
-        let pool = r2d2::Pool::new(manager).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fn get_schema_version(conn: &PooledConnection<SqliteConnectionManager>) -> rusqlite::Result<(Option<String>, bool)> {        
+        let result = conn.query_row(
+            "SELECT version, dirty FROM schema_migrations ORDER BY applied_at DESC LIMIT 1",
+            [],
+            |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, bool>(1)?))
+        ).optional()?;
+        
+        Ok(result.unwrap_or((None, false)))
+    }
 
-        // Initialize the database schema
-        let conn = pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fn migrate(conn: &PooledConnection<SqliteConnectionManager>) -> rusqlite::Result<()> {
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS prodlog_entries (
-                capture_type TEXT,
-                uuid TEXT PRIMARY KEY,
-                host TEXT,
-                cwd TEXT,
-                cmd TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                duration_ms INTEGER,
-                exit_code INTEGER,
-                output BLOB,
-                message TEXT,
-                filename TEXT,
-                original_content BLOB,
-                edited_content BLOB
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version TEXT,
+                dirty BOOLEAN DEFAULT FALSE,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )",
             [],
-        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        Ok(SqliteSink { pool: Arc::new(pool) })
+        )?;
+
+       match SqliteSink::get_schema_version(conn)? {
+            (_, true) => {
+                prodlog_panic("Database is dirty and needs to be fixed manually.");
+            }
+            (None, false) => {
+                // Initialize the database schema
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS prodlog_entries (
+                        capture_type TEXT,
+                        uuid TEXT PRIMARY KEY,
+                        host TEXT,
+                        cwd TEXT,
+                        cmd TEXT,
+                        start_time TEXT,
+                        end_time TEXT,
+                        duration_ms INTEGER,
+                        exit_code INTEGER,
+                        output BLOB,
+                        message TEXT,
+                        filename TEXT,
+                        original_content BLOB,
+                        edited_content BLOB
+                    );",
+                    [],
+                )?;
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, dirty, applied_at)
+                    VALUES (?1, FALSE, CURRENT_TIMESTAMP);",
+                    [env!("CARGO_PKG_VERSION").to_string()],
+                )?;
+            }
+            (Some(version), false) => {
+                if version == env!("CARGO_PKG_VERSION").to_string() {
+                    return Ok(());
+                }
+                prodlog_panic(&format!("Database schema version {} is not supported. Please upgrade Prodlog.", version));
+            }
+        };
+
+
+        Ok(())
+    }
+
+    pub fn new(prodlog_file: &PathBuf) -> Self {
+        let prodlog_file = prodlog_file.clone();
+        let manager = SqliteConnectionManager::file(prodlog_file);
+        let pool = match r2d2::Pool::new(manager) {
+            Ok(pool) => pool,
+            Err(e) => {
+                prodlog_panic(&format!("Error creating sqlite pool: {}", e));
+            }
+        };
+        let conn = match pool.get() {
+            Ok(conn) => conn,
+            Err(e) => {
+                prodlog_panic(&format!("Error getting sqlite connection: {}", e));
+            }
+        };
+
+        match SqliteSink::migrate(&conn) {
+            Ok(_) => SqliteSink { pool: Arc::new(pool) },
+            Err(e) => {
+                prodlog_panic(&format!("Error migrating database: {}", e));
+            }
+        }
     }
 }
 

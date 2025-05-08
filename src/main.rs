@@ -374,10 +374,11 @@ fn get_sinks(prodlog_dir: &PathBuf) -> Vec<Box<dyn sinks::Sink>> {
     fs::create_dir_all(prodlog_dir).expect("Failed to create directory");
     let json_file = prodlog_dir.join("prodlog.json");
     let sqlite_file = prodlog_dir.join("prodlog.sqlite");
+
     vec![
         Box::new(sinks::obsidian::ObsidianSink::new(&prodlog_dir)),
         Box::new(sinks::json::JsonSink::new(&json_file)),
-        Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file).unwrap()),
+        Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file)),
     ]
 }
 
@@ -470,7 +471,7 @@ fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<()
         },
         "sqlite" => {
             // TODO: copy to tmp file so we don't modify the original if the schema changed.
-            Box::new(sinks::sqlite::SqliteSink::new(&import_file)?)
+            Box::new(sinks::sqlite::SqliteSink::new(&import_file))
         },
         _ => {
             prodlog_panic(&format!("Error: Import file must be .json or .sqlite, got {:?}", import_file));
@@ -519,7 +520,7 @@ async fn main() {
     tokio::spawn(async move {
         // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
         let sqlite_file = prodlog_dir.join("prodlog.sqlite");
-        let sink = Arc::new(sinks::sqlite::SqliteSink::new(&sqlite_file).unwrap());
+        let sink = Arc::new(sinks::sqlite::SqliteSink::new(&sqlite_file));
         ui::run_ui(sink, ui_port).await;
     });
 
