@@ -127,12 +127,15 @@ impl Sink for JsonSink {
     fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error> {
         // Read existing JSON file
         let mut prodlog_data = read_prodlog_data(&self.prodlog_file)?;
-
+        
+        // Find and remove any existing entry with the same UUID
+        prodlog_data.entries.retain(|entry| entry.uuid != capture.uuid);
+        
+        // Add the new/updated entry
         prodlog_data.entries.push(capture.clone());
 
         // Write updated JSON file
         fs::write(&self.prodlog_file, serde_json::to_string_pretty(&prodlog_data)?)?;
-
         Ok(())
     }
 }

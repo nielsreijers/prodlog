@@ -107,8 +107,9 @@ impl Sink for SqliteSink {
     fn add_entry(&mut self, capture: &CaptureV2_2) -> Result<(), std::io::Error> {
         let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
         conn.execute(
-            "INSERT INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, exit_code, output, message, filename, original_content, edited_content)
+            "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, exit_code, output, message, filename, original_content, edited_content)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 if capture.capture_type == CaptureType::Run { "run" } else { "edit" },
