@@ -138,12 +138,24 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            table-layout: fixed;
         }}
         th, td {{
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid var(--proton-border);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }}
+        th:nth-child(1), td:nth-child(1) {{ width: 190px; }} /* Time */
+        th:nth-child(2), td:nth-child(2) {{ width: 40px; }}  /* Type */
+        th:nth-child(3), td:nth-child(3) {{ width: 120px; }} /* Host */
+        th:nth-child(4), td:nth-child(4) {{ width: auto; }}  /* Command - takes remaining space */
+        th:nth-child(5), td:nth-child(5) {{ width: 80px; }} /* Duration */
+        th:nth-child(6), td:nth-child(6) {{ width: 30px; }}  /* Exit */
+        th:nth-child(7), td:nth-child(7) {{ width: 50px; }} /* Log */
+        td:nth-child(4) {{ white-space: normal; }} /* Allow command to wrap */
         th {{
             background-color: var(--proton-hover);
             font-weight: 600;
