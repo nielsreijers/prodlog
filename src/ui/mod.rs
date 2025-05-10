@@ -188,21 +188,36 @@ async fn index(
                     format!("prodlog edit {}", entry.filename)                    
                 }
             };
+            let message_row = if !entry.message.is_empty() {
+                format!(
+                    r#"<tr class="message-row">
+                        <td colspan="2"></td>
+                        <td colspan="6" class="message">{}</td>
+                    </tr>"#,
+                    entry.message
+                )
+            } else {
+                String::new()
+            };
             format!(
-                r#"<tr{}>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>
-                        <button class="copy-button" onclick="copyButton(this, '{}')" title="Copy">
-                            {}
-                        </button>
-                    </td>
-                    <td>{}ms</td>
-                    <td>{}</td>
-                    <td>{}{}</td>
-                </tr>"#,
+                r#"
+                <tbody>
+                    <tr{} class="main-row">
+                        <td>{}</td>
+                        <td>{}</td>
+                        <td>{}</td>
+                        <td>{}</td>
+                        <td>
+                            <button class="copy-button" onclick="copyButton(this, '{}')" title="Copy">
+                                {}
+                            </button>
+                        </td>
+                        <td>{}ms</td>
+                        <td>{}</td>
+                        <td>{}{}</td>
+                    </tr>
+                    {}
+                </tbody>"#,
                 row_class,
                 entry_type,
                 format_timestamp(&entry.start_time),
@@ -213,7 +228,8 @@ async fn index(
                 entry.duration_ms,
                 entry.exit_code,
                 link,
-                preview_html
+                preview_html,
+                message_row
             )
         })
         .collect::<Vec<_>>()

@@ -70,7 +70,7 @@ pub const MAIN_CSS: &str = r#"
     <style>
         :root {
             --proton-blue: #6D4AFF;
-            --proton-blue-hover: #7B5AFF;
+            --proton-blue-hover:rgb(206, 198, 236);
             --proton-background: #FFFFFF;
             --proton-text: #1C1B1F;
             --proton-text-secondary: #4E4B66;
@@ -189,18 +189,25 @@ pub const MAIN_CSS: &str = r#"
         th, td {
             padding: 1rem;
             text-align: left;
-            border-bottom: 1px solid var(--proton-border);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        th {
-            background-color: var(--proton-hover);
-            font-weight: 600;
-            color: var(--proton-text-secondary);
+        tbody {
+            border-bottom: 1px solid var(--proton-border);
         }
-        tr:hover {
-            background-color: var(--proton-hover);
+        tbody:hover {
+            background-color: var(--proton-blue-hover);
+        }
+        .message-row .message {
+            font-size: 0.875rem;
+            font-style: italic;
+            color: var(--proton-text-secondary);
+            padding-top: 0;
+            padding-bottom: 1rem;
+        }
+        .message-row td {
+            border-top: none;
         }
         a {
             color: var(--proton-blue);
