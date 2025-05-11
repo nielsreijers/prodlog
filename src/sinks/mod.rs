@@ -20,7 +20,7 @@ pub struct Filters {
     pub output: Option<String>,
 }
 
-pub trait UiSource: Send + Sync {
+pub trait UiSource: Sink + Send + Sync {
     fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_2>, std::io::Error>;
     fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_2>, std::io::Error>;
 }

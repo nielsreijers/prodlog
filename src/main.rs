@@ -1,4 +1,5 @@
 use nix::sys::wait::waitpid;
+use sinks::UiSource;
 use termion::color::Color;
 use std::fs::File;
 use std::io::{ Read, Stdout, Write };
@@ -9,7 +10,7 @@ use termion::input::TermReadEventsAndRaw;
 use nix::pty::{ ForkptyResult, Winsize };
 use nix::ioctl_write_ptr_bad;
 use termion::terminal_size;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tokio::signal::unix::{ signal, SignalKind };
 use nix::unistd::execvp;
 use std::ffi::CString;
@@ -520,7 +521,7 @@ async fn main() {
     tokio::spawn(async move {
         // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
         let sqlite_file = prodlog_dir.join("prodlog.sqlite");
-        let sink = Arc::new(sinks::sqlite::SqliteSink::new(&sqlite_file));
+        let sink: Arc<RwLock<Box<dyn UiSource>>> = Arc::new(RwLock::new(Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file))));
         ui::run_ui(sink, ui_port).await;
     });
 

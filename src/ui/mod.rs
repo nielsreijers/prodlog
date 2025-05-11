@@ -3,7 +3,9 @@ use axum::{
     Router,
     response::Html,
     extract::{State, Query, Path},
+    Json,
 };
+use tokio::sync::RwLock;
 use uuid::Uuid;
 use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
@@ -11,10 +13,19 @@ use urlencoding;
 use similar::{TextDiff, ChangeTag};
 use html_escape;
 use crate::{model::{CaptureType, CaptureV2_2}, sinks::{Filters, UiSource}};
-use resources::{CAPTURE_TYPE_EDIT_SVG, CAPTURE_TYPE_RUN_SVG, COPY_ICON_SVG, MAIN_CSS, OUTPUT_CSS};
+use resources::{CAPTURE_TYPE_EDIT_SVG, CAPTURE_TYPE_RUN_SVG, COPY_ICON_SVG, EDIT_ICON_SVG, MAIN_CSS, OUTPUT_CSS};
+use serde::{Deserialize};
 
 mod ansi_to_html;
 mod resources;
+
+type ProdlogUiState = Arc<RwLock<Box<dyn UiSource>>>;
+
+#[derive(Deserialize)]
+struct SaveRequest {
+    uuid: String,
+    message: String,
+}
 
 fn generate_html(table_rows: &str, filters: &Filters) -> String {
     format!(r#"
@@ -52,7 +63,7 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
                     <th style="width: 190px;">Time</th>
                     <th style="width: 120px;">Host</th>
                     <th style="width: auto; white-space: normal;">Command</th>
-                    <th style="width: 24px;"></th>
+                    <th style="width: 48px;"></th>
                     <th style="width: 80px;">Duration</th>
                     <th style="width: 30px;">Exit</th>
                     <th style="width: 50px;">Log</th>
@@ -117,10 +128,10 @@ fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
 }
 
 async fn index(
-    State(sink): State<Arc<dyn UiSource>>,
+    State(sink): State<ProdlogUiState>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
-    let data = match sink.get_entries(&filters) {
+    let data = match sink.read().await.get_entries(&filters) {
         Ok(data) => data,
         Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
     };
@@ -192,44 +203,47 @@ async fn index(
                 format!(
                     r#"<tr class="message-row">
                         <td colspan="2"></td>
-                        <td colspan="6" class="message">{}</td>
+                        <td colspan="6" class="message">
+                            <div class="message-content">
+                                <span>{}</span>
+                            </div>
+                        </td>
                     </tr>"#,
                     entry.message
                 )
             } else {
                 String::new()
             };
+            let uuid = entry.uuid.to_string();
+            let start_time = format_timestamp(&entry.start_time);
+            let host = entry.host.clone();
+            let cmd = entry.cmd.clone();
+            let duration = entry.duration_ms;
+            let exit_code = entry.exit_code;
             format!(
                 r#"
                 <tbody>
-                    <tr{} class="main-row">
-                        <td>{}</td>
-                        <td>{}</td>
-                        <td>{}</td>
-                        <td>{}</td>
+                    <tr{row_class} class="main-row">
+                        <td>{entry_type}</td>
+                        <td>{start_time}</td>
+                        <td>{host}</td>
+                        <td>{cmd}</td>
                         <td>
-                            <button class="copy-button" onclick="copyButton(this, '{}')" title="Copy">
-                                {}
-                            </button>
+                            <div class="button-group">
+                                <button class="copy-button" onclick="copyButton(this, '{copy_text}')" title="Copy">
+                                    {COPY_ICON_SVG}
+                                </button>
+                                <a href="edit/{uuid}" class="copy-button" title="Edit command">
+                                    {EDIT_ICON_SVG}
+                                </a>
+                            </div>
                         </td>
-                        <td>{}ms</td>
-                        <td>{}</td>
-                        <td>{}{}</td>
+                        <td>{duration}ms</td>
+                        <td>{exit_code}</td>
+                        <td>{link}{preview_html}</td>
                     </tr>
-                    {}
+                    {message_row}
                 </tbody>"#,
-                row_class,
-                entry_type,
-                format_timestamp(&entry.start_time),
-                entry.host,
-                entry.cmd,
-                copy_text,
-                COPY_ICON_SVG,
-                entry.duration_ms,
-                entry.exit_code,
-                link,
-                preview_html,
-                message_row
             )
         })
         .collect::<Vec<_>>()
@@ -305,12 +319,12 @@ r#"<!DOCTYPE html>
 }
 
 async fn view_output(
-    State(sink): State<Arc<dyn UiSource>>,
+    State(sink): State<ProdlogUiState>,
     Path(uuid): Path<String>,
     Query(filters): Query<Filters>,
 ) -> Html<String> {
     let uuid = Uuid::parse_str(&uuid).unwrap();
-    let entry = sink.get_entry_by_id(uuid);
+    let entry = sink.read().await.get_entry_by_id(uuid);
 
     match entry {
         Ok(entry) => {
@@ -370,11 +384,11 @@ r#"<!DOCTYPE html>
 }
 
 async fn view_diff(
-    State(sink): State<Arc<dyn UiSource>>,
+    State(sink): State<ProdlogUiState>,
     Path(uuid): Path<String>,
 ) -> Html<String> {
     let uuid = Uuid::parse_str(&uuid).unwrap();
-    let entry = sink.get_entry_by_id(uuid);
+    let entry = sink.read().await.get_entry_by_id(uuid);
 
     match entry {
         Ok(entry) => {
@@ -388,11 +402,114 @@ async fn view_diff(
     }
 }
 
-pub async fn run_ui(sink: Arc<dyn UiSource>, port: u16) {
+fn generate_edit_html(entry: &CaptureV2_2) -> String {
+    let header = generate_entry_header(entry);
+
+    format!(
+r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Edit Entry</title>
+    {OUTPUT_CSS}
+</head>
+<body>
+    <div class="container">
+        <div class="back-link">
+            <a href="/">← Back to list</a>
+        </div>
+        {header}
+        <form id="editForm">
+            <i>Message:</i>
+            <textarea name="message" rows="10" style="width: 100%; margin: 1rem 0;">{message}</textarea>
+            <div class="button-group">
+                <button type="submit">Save</button>
+                <a href="/" class="button">Cancel</a>
+            </div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('editForm').addEventListener('submit', async (e) => {{
+            e.preventDefault();
+            const form = e.target;
+            const data = {{
+                uuid: '{uuid}',
+                message: form.message.value
+            }};
+            try {{
+                const response = await fetch('/save', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json',
+                    }},
+                    body: JSON.stringify(data)
+                }});
+                if (response.ok) {{
+                    window.location.href = '/';
+                }} else {{
+                    alert('Failed to save changes');
+                }}
+            }} catch (error) {{
+                alert('Error saving changes: ' + error);
+            }}
+        }});
+    </script>
+</body>
+</html>
+"#,
+        uuid = entry.uuid,
+        message = html_escape::encode_text(&entry.message)
+    )
+}
+
+async fn view_edit(
+    State(sink): State<ProdlogUiState>,
+    Path(uuid): Path<String>,
+) -> Html<String> {
+    let uuid = Uuid::parse_str(&uuid).unwrap();
+    let entry = sink.read().await.get_entry_by_id(uuid);
+
+    match entry {
+        Ok(entry) => {
+            if let Some(entry) = entry {
+                Html(generate_edit_html(&entry))
+            } else {
+                Html(String::from("Entry not found"))
+            }        
+        },
+        Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
+    }
+}
+
+async fn save_entry(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<SaveRequest>,
+) -> Html<String> {
+    let uuid = match Uuid::parse_str(&data.uuid) {
+        Ok(uuid) => uuid,
+        Err(_) => return Html(String::from("Invalid UUID")),
+    };
+
+    let entry = match sink.read().await.get_entry_by_id(uuid) {
+        Ok(Some(mut entry)) => {
+            entry.message = data.message;
+            entry
+        },
+        _ => return Html(String::from("Entry not found")),
+    };
+
+    match sink.write().await.add_entry(&entry) {
+        Ok(_) => Html(String::from("Success")),
+        Err(err) => Html(format!("Error saving entry: {}", err)),
+    }
+}
+
+pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
         .route("/", get(index))
         .route("/output/:uuid", get(view_output))
         .route("/diff/:uuid", get(view_diff))
+        .route("/edit/:uuid", get(view_edit))
+        .route("/save", axum::routing::post(save_entry))
         .with_state(sink);
 
     let addr = format!("0.0.0.0:{}", port);    
