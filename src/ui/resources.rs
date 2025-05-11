@@ -238,6 +238,9 @@ pub const MAIN_CSS: &str = r#"
         tr.error-row {
             background-color: #ffeaea !important;
         }
+        tr.noop-row {
+            background-color: #aaaaaa !important;
+        }
         .copy-button {
             background: none;
             border: none;
@@ -258,6 +261,54 @@ pub const MAIN_CSS: &str = r#"
         }
         .copy-button.copied {
             color: var(--proton-blue);
+        }
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--proton-border);
+            transition: .4s;
+            border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--proton-blue);
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+        .switch-label {
+            font-size: 0.875rem;
+            color: var(--proton-text-secondary);
         }
     </style>
     "#;

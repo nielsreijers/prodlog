@@ -197,6 +197,12 @@ impl UiSource for SqliteSink {
             params.push(Box::new(format!("%{}%", output)));
         }
 
+        if let Some(true) = &filters.show_noop {
+            // Don't filter out no-op entries
+        } else {
+            query.push_str(" AND is_noop = 0");
+        }
+
         query.push_str(" ORDER BY start_time DESC");
         
         let mut stmt = conn.prepare(&query).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;

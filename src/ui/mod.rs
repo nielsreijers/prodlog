@@ -25,6 +25,7 @@ type ProdlogUiState = Arc<RwLock<Box<dyn UiSource>>>;
 struct SaveRequest {
     uuid: String,
     message: String,
+    is_noop: bool,
 }
 
 fn generate_html(table_rows: &str, filters: &Filters) -> String {
@@ -52,6 +53,13 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
                 <input type="text" name="host" placeholder="Hostname" value="{1}">
                 <input type="text" name="command" placeholder="Command" value="{2}">
                 <input type="text" name="output" placeholder="Search in output" value="{3}">
+                <div class="switch-container">
+                    <label class="switch">
+                        <input type="checkbox" name="show_noop" value="true" {4}>
+                        <span class="slider"></span>
+                    </label>
+                    <span class="switch-label">Reveal no-op entries</span>
+                </div>
                 <button type="submit">Filter</button>
                 <button type="button" onclick="window.location.href='/'">Clear</button>
             </form>
@@ -70,7 +78,7 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
                 </tr>
             </thead>
             <tbody>
-                {4}
+                {5}
             </tbody>
         </table>
     </div>
@@ -80,7 +88,6 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             const toggleText = document.querySelector('.toggle-text');
             container.classList.toggle('full-width');
             toggleText.textContent = container.classList.contains('full-width') ? 'Column Width' : 'Full Width';
-            // Store preference in localStorage
             localStorage.setItem('fullWidth', container.classList.contains('full-width'));
         }}
         
@@ -95,7 +102,6 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
             }});
         }}
 
-        // Restore preference on page load
         document.addEventListener('DOMContentLoaded', () => {{
             const container = document.getElementById('container');
             const toggleText = document.querySelector('.toggle-text');
@@ -112,6 +118,7 @@ fn generate_html(table_rows: &str, filters: &Filters) -> String {
         filters.host.as_deref().unwrap_or(""),
         filters.command.as_deref().unwrap_or(""),
         filters.output.as_deref().unwrap_or(""),
+        if filters.show_noop.unwrap_or(false) { "checked" } else { "" },
         table_rows
     )
 }
@@ -171,7 +178,15 @@ async fn index(
             } else {
                 String::new()
             };
-            let row_class = if entry.exit_code != 0 { " class=\"error-row\"" } else { "" };
+            let row_class = if entry.is_noop {
+                " class=\"noop-row\""
+           } else { 
+                if entry.exit_code != 0 {
+                    " class=\"error-row\""
+                } else {
+                    ""
+                }
+            };
             let link = match entry.capture_type {
                 crate::model::CaptureType::Run => {
                     let url =if let Some(output_filter) = &filters.output {
@@ -421,6 +436,12 @@ r#"<!DOCTYPE html>
         <form id="editForm">
             <i>Message:</i>
             <textarea name="message" rows="10" style="width: 100%; margin: 1rem 0;">{message}</textarea>
+            <div style="margin: 1rem 0;">
+                <label>
+                    <input type="checkbox" name="is_noop" {is_noop_checked}>
+                    Mark as no-op (this command had no effect)
+                </label>
+            </div>
             <div class="button-group">
                 <button type="submit">Save</button>
                 <a href="/" class="button">Cancel</a>
@@ -433,7 +454,8 @@ r#"<!DOCTYPE html>
             const form = e.target;
             const data = {{
                 uuid: '{uuid}',
-                message: form.message.value
+                message: form.message.value,
+                is_noop: form.is_noop.checked
             }};
             try {{
                 const response = await fetch('/save', {{
@@ -457,7 +479,8 @@ r#"<!DOCTYPE html>
 </html>
 "#,
         uuid = entry.uuid,
-        message = html_escape::encode_text(&entry.message)
+        message = html_escape::encode_text(&entry.message),
+        is_noop_checked = if entry.is_noop { "checked" } else { "" }
     )
 }
 
@@ -492,6 +515,7 @@ async fn save_entry(
     let entry = match sink.read().await.get_entry_by_id(uuid) {
         Ok(Some(mut entry)) => {
             entry.message = data.message;
+            entry.is_noop = data.is_noop;
             entry
         },
         _ => return Html(String::from("Entry not found")),

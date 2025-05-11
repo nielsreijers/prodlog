@@ -84,7 +84,15 @@ impl UiSource for JsonSink {
                     continue;
                 }
             }
-    
+
+            if let Some(true) = &filters.show_noop {
+                // Don't filter out no-op entries
+            } else {
+                if entry.is_noop {
+                    continue;
+                }
+            }
+
             // Check output content if output filter is present
             if let Some(output_filter) = &filters.output {
                 if !output_filter.is_empty() {

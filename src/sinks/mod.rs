@@ -18,6 +18,7 @@ pub struct Filters {
     pub host: Option<String>,
     pub command: Option<String>,
     pub output: Option<String>,
+    pub show_noop: Option<bool>,
 }
 
 pub trait UiSource: Sink + Send + Sync {
