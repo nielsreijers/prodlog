@@ -12,7 +12,7 @@ use chrono::{DateTime, Duration, Utc};
 use urlencoding;
 use similar::{TextDiff, ChangeTag};
 use html_escape;
-use crate::{model::{CaptureType, CaptureV2_2}, sinks::{Filters, UiSource}};
+use crate::{model::{CaptureType, CaptureV2_3}, sinks::{Filters, UiSource}};
 use resources::{CAPTURE_TYPE_EDIT_SVG, CAPTURE_TYPE_RUN_SVG, COPY_ICON_SVG, EDIT_ICON_SVG, MAIN_CSS, OUTPUT_CSS};
 use serde::{Deserialize};
 
@@ -136,7 +136,7 @@ async fn index(
         Err(err) => return Html(String::from(format!("Error loading log data: {}", err))),
     };
 
-    let mut entries: Vec<(CaptureV2_2, Option<String>)> = if let Some(output_filter) = &filters.output {
+    let mut entries: Vec<(CaptureV2_3, Option<String>)> = if let Some(output_filter) = &filters.output {
         if !output_filter.is_empty() {
             data.into_iter().map(|entry| {
                 let output_content = entry.output_as_string();
@@ -252,7 +252,7 @@ async fn index(
     Html(generate_html(&rows, &filters))
 }
 
-fn generate_entry_header(entry: &CaptureV2_2) -> String {
+fn generate_entry_header(entry: &CaptureV2_3) -> String {
     let host = &entry.host;
     let cmd = &entry.cmd;
     let cwd = &entry.cwd;
@@ -288,7 +288,7 @@ ExitCode:  {exit}
 
 
 
-fn generate_output_html(entry: &CaptureV2_2, output_filter: Option<&str>) -> String {
+fn generate_output_html(entry: &CaptureV2_3, output_filter: Option<&str>) -> String {
     let header = generate_entry_header(entry);
     let decoded_output = entry.output_as_string();
     let html_output = ansi_to_html::ansi_to_html(&decoded_output);
@@ -355,7 +355,7 @@ fn simple_diff(orig: &str, edited: &str) -> String {
     html
 }
 
-fn generate_diff_html(entry: &CaptureV2_2) -> String {
+fn generate_diff_html(entry: &CaptureV2_3) -> String {
     if entry.capture_type != crate::model::CaptureType::Edit {
         return "Not an edit entry".to_string();
     }
@@ -402,7 +402,7 @@ async fn view_diff(
     }
 }
 
-fn generate_edit_html(entry: &CaptureV2_2) -> String {
+fn generate_edit_html(entry: &CaptureV2_3) -> String {
     let header = generate_entry_header(entry);
 
     format!(

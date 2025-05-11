@@ -21,7 +21,7 @@ use clap::Parser;
 use std::path::PathBuf; // Use PathBuf for paths
 use dirs;
 use uuid::Uuid; // Add uuid dependency
-use model::{CaptureType, CaptureV2_2};
+use model::{CaptureType, CaptureV2_3};
 
 mod ui;
 mod sinks;
@@ -63,7 +63,7 @@ enum StdoutHandlerState {
 struct StdoutHandler {
     stdout: RawTerminal<Stdout>,
     child_stdin_tx: mpsc::Sender<Vec<u8>>,
-    capturing: Option<CaptureV2_2>,
+    capturing: Option<CaptureV2_3>,
     state: StdoutHandlerState,
     sinks: Vec<Box<dyn sinks::Sink>>,
 }
@@ -106,10 +106,10 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn start_capturing_run(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureV2_2, std::io::Error> {
+    fn start_capturing_run(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureV2_3, std::io::Error> {
         let start_time = Utc::now();
 
-        Ok(CaptureV2_2 {
+        Ok(CaptureV2_3 {
             capture_type: CaptureType::Run,
             uuid: Uuid::new_v4(),
             host: host.to_string(),
@@ -119,6 +119,7 @@ impl StdoutHandler {
             captured_output: Vec::new(),
             message: message.to_string(),
             duration_ms: 0,
+            is_noop: false,
             exit_code: -1,
             filename: "".to_string(),
             original_content: "".as_bytes().to_vec(),
@@ -126,7 +127,7 @@ impl StdoutHandler {
         })
     }
 
-    fn stop_capturing_run(capture: &mut CaptureV2_2, exit_code: i32, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+    fn stop_capturing_run(capture: &mut CaptureV2_3, exit_code: i32, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
         capture.exit_code = exit_code;
         capture.duration_ms = Utc::now().signed_duration_since(capture.start_time).num_milliseconds() as u64;
         for sink in sinks {
@@ -139,10 +140,10 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn start_capturing_edit(host: &str, cwd: &str, cmd: &str, message: &str, filename: &str, original_content: Vec<u8>) -> Result<CaptureV2_2, std::io::Error> {
+    fn start_capturing_edit(host: &str, cwd: &str, cmd: &str, message: &str, filename: &str, original_content: Vec<u8>) -> Result<CaptureV2_3, std::io::Error> {
         let start_time = Utc::now();
 
-        Ok(CaptureV2_2 {
+        Ok(CaptureV2_3 {
             capture_type: CaptureType::Edit,
             uuid: Uuid::new_v4(),
             host: host.to_string(),
@@ -152,6 +153,7 @@ impl StdoutHandler {
             captured_output: Vec::new(),
             message: message.to_string(),
             duration_ms: 0,
+            is_noop: false,
             exit_code: -1,
             filename: filename.to_string(),
             original_content: original_content,
@@ -159,7 +161,7 @@ impl StdoutHandler {
         })
     }
 
-    fn stop_capturing_edit(capture: &mut CaptureV2_2, exit_code: i32, edited_content: Vec<u8>, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+    fn stop_capturing_edit(capture: &mut CaptureV2_3, exit_code: i32, edited_content: Vec<u8>, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
         capture.exit_code = exit_code;
         capture.duration_ms = Utc::now().signed_duration_since(capture.start_time).num_milliseconds() as u64;
         capture.edited_content = edited_content;

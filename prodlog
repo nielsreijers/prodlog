@@ -1,5 +1,7 @@
 #!/bin/bash
 
+PRODLOG_VERSION="2.3.0"
+
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
@@ -115,7 +117,7 @@ elif [[ "$mode" == "edit" ]]; then
 fi
 
 # Check if prodlog is running
-send_command "$CMD_ARE_YOU_RUNNING" "2.2.0"
+send_command "$CMD_ARE_YOU_RUNNING" "$PRODLOG_VERSION"
 
 # Read response from stdin with a 1-second timeout
 if ! read -t 1 response; then
