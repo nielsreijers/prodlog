@@ -2,13 +2,15 @@ pub const OUTPUT_CSS: &str = r#"
     <style>
         :root {
             --proton-blue: #6D4AFF;
-            --proton-background: #1C1B1F;
-            --proton-text: #FFFFFF;
-            --proton-text-secondary: #A0A0A0;
-            --proton-border: #2D2D2D;
+            --proton-blue-hover: rgb(206, 198, 236);
+            --proton-background: #FFFFFF;
+            --proton-text: #1C1B1F;
+            --proton-text-secondary: #4E4B66;
+            --proton-border: #E5E7EB;
+            --proton-hover: #F5F5F5;
         }
         body { 
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             margin: 0;
             padding: 0;
             background-color: var(--proton-background);
@@ -18,15 +20,11 @@ pub const OUTPUT_CSS: &str = r#"
             max-width: 1200px;
             margin: 0 auto;
             padding: 2rem;
+            transition: max-width 0.3s ease;
         }
-        .command-output { 
-            white-space: pre-wrap;
-            margin: 0;
-            padding: 1.5rem;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            font-size: 0.875rem;
-            line-height: 1.5;
+        .container.full-width {
+            max-width: none;
+            padding: 2rem;
         }
         .back-link { 
             margin-bottom: 1.5rem; 
@@ -43,25 +41,205 @@ pub const OUTPUT_CSS: &str = r#"
         .back-link a:hover {
             color: var(--proton-text);
         }
+        .command-output { 
+            white-space: pre-wrap;
+            margin: 0;
+            padding: 1.5rem;
+            background-color: var(--proton-background);
+            border: 1px solid var(--proton-border);
+            border-radius: 12px;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
         .match-highlight { 
-            background-color: #ffeb3b;
-            color: #222;
-            padding: 2px 4px;
+            background-color: rgba(109, 74, 255, 0.1);
+            color: var(--proton-blue);
+            padding: 0.125rem 0.25rem;
             border-radius: 4px;
-            font-weight: bold;
-            box-shadow: 0 0 0 2px #fff59d;
         }
         .diff-del {
             background: #ffebee;
             color: #b71c1c;
+            padding: 0.125rem 0;
         }
         .diff-ins {
             background: #e8f5e9;
             color: #1b5e20;
+            padding: 0.125rem 0;
         }
         .diff-del span, .diff-ins span {
             font-weight: bold;
             margin-right: 0.5em;
+            color: inherit;
+        }
+        pre {
+            margin: 0;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+        }
+        form {
+            background-color: var(--proton-background);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-top: 1.5rem;
+        }
+        textarea {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--proton-border);
+            border-radius: 8px;
+            font-size: 0.875rem;
+            color: var(--proton-text);
+            background-color: var(--proton-background);
+            transition: all 0.2s ease;
+            font-family: inherit;
+            resize: vertical;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--proton-blue);
+            box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
+        }
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            background-color: var(--proton-blue);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        button:hover {
+            background-color: var(--proton-blue-hover);
+        }
+        .button {
+            padding: 0.75rem 1.5rem;
+            background-color: transparent;
+            color: var(--proton-text);
+            border: 1px solid var(--proton-border);
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: inline-block;
+        }
+        .button:hover {
+            background-color: var(--proton-hover);
+        }
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--proton-border);
+            transition: .4s;
+            border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--proton-blue);
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+        .switch-label {
+            font-size: 0.875rem;
+            color: var(--proton-text-secondary);
+        }
+        .header-info {
+            background-color: var(--proton-background);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .info-item {
+            display: flex;
+            gap: 0.5rem;
+            align-items: baseline;
+        }
+        .info-label {
+            color: var(--proton-text-secondary);
+            font-size: 0.875rem;
+            min-width: 80px;
+        }
+        .info-value {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 0.875rem;
+            word-break: break-all;
+        }
+        .message {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: var(--proton-hover);
+            border-radius: 8px;
+            font-style: italic;
+            color: var(--proton-text-secondary);
+        }
+        .content-box {
+            background-color: var(--proton-background);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        h2 {
+            margin: 1rem 0;
+            font-size: 1.25rem;
+            color: var(--proton-text);
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--proton-text-secondary);
+            font-size: 0.875rem;
         }
     </style>
 "#;

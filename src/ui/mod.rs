@@ -277,7 +277,7 @@ fn generate_entry_header(entry: &CaptureV2_3) -> String {
     let duration = entry.duration_ms;
     let exit = entry.exit_code;
     let message = if !entry.message.is_empty() {
-        format!("Message:   {}\n", entry.message)
+        format!("<div class=\"message\">{}</div>", entry.message)
     } else {
         String::new()
     };
@@ -287,21 +287,42 @@ fn generate_entry_header(entry: &CaptureV2_3) -> String {
         format!("<h2>{}</h2>", entry.cmd)
     };
     format!("
-<pre>
-Host:      {host}
-Command:   {cmd}
-Directory: {cwd}
-Start:     {start}
-End:       {end}
-Duration:  {duration}ms
-ExitCode:  {exit}
-{message}
-{diff_or_output}
-</pre>
+<div class=\"header-info\">
+    <div class=\"info-grid\">
+        <div class=\"info-item\">
+            <span class=\"info-label\">Host:</span>
+            <span class=\"info-value\">{host}</span>
+        </div>
+        <div class=\"info-item\">
+            <span class=\"info-label\">Command:</span>
+            <span class=\"info-value\">{cmd}</span>
+        </div>
+        <div class=\"info-item\">
+            <span class=\"info-label\">Directory:</span>
+            <span class=\"info-value\">{cwd}</span>
+        </div>
+        <div class=\"info-item\">
+            <span class=\"info-label\">Start:</span>
+            <span class=\"info-value\">{start}</span>
+        </div>
+        <div class=\"info-item\">
+            <span class=\"info-label\">End:</span>
+            <span class=\"info-value\">{end}</span>
+        </div>
+        <div class=\"info-item\">
+            <span class=\"info-label\">Duration:</span>
+            <span class=\"info-value\">{duration}ms</span>
+        </div>
+        <div class=\"info-item\">
+            <span class=\"info-label\">Exit Code:</span>
+            <span class=\"info-value\">{exit}</span>
+        </div>
+    </div>
+    {message}
+    {diff_or_output}
+</div>
     ")
 }
-
-
 
 fn generate_output_html(entry: &CaptureV2_3, output_filter: Option<&str>) -> String {
     let header = generate_entry_header(entry);
@@ -326,7 +347,9 @@ r#"<!DOCTYPE html>
             <a href="/">← Back to list</a>
         </div>
         {header}
-        <pre class="command-output">{highlighted_output}</pre>
+        <div class="content-box">
+            <pre class="command-output">{highlighted_output}</pre>
+        </div>
     </div>
 </body>
 </html>
@@ -391,7 +414,9 @@ r#"<!DOCTYPE html>
             <a href="/">← Back to list</a>
         </div>
         {header}
-        <pre class="command-output">{diff_html}</pre>
+        <div class="content-box">
+            <pre class="command-output">{diff_html}</pre>
+        </div>
     </div>
 </body>
 </html>
@@ -434,13 +459,16 @@ r#"<!DOCTYPE html>
         </div>
         {header}
         <form id="editForm">
-            <i>Message:</i>
-            <textarea name="message" rows="10" style="width: 100%; margin: 1rem 0;">{message}</textarea>
-            <div style="margin: 1rem 0;">
-                <label>
+            <div class="form-group">
+                <label for="message">Message:</label>
+                <textarea name="message" id="message" rows="10">{message}</textarea>
+            </div>
+            <div class="switch-container">
+                <label class="switch">
                     <input type="checkbox" name="is_noop" {is_noop_checked}>
-                    Mark as no-op (this command had no effect)
+                    <span class="slider"></span>
                 </label>
+                <span class="switch-label">Mark as no-op (this command had no effect)</span>
             </div>
             <div class="button-group">
                 <button type="submit">Save</button>
