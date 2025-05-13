@@ -9,6 +9,8 @@ pub const OUTPUT_CSS: &str = r#"
             --proton-border: #E5E7EB;
             --proton-hover: #F5F5F5;
         }
+
+        /* Base styles */
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             margin: 0;
@@ -20,27 +22,17 @@ pub const OUTPUT_CSS: &str = r#"
             max-width: 1200px;
             margin: 0 auto;
             padding: 2rem;
-            transition: max-width 0.3s ease;
         }
-        .container.full-width {
-            max-width: none;
-            padding: 2rem;
-        }
-        .back-link { 
-            margin-bottom: 1.5rem; 
-        }
-        .back-link a {
-            color: var(--proton-text-secondary);
+        a {
+            color: var(--proton-blue);
             text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.875rem;
-            transition: color 0.2s ease;
+            font-weight: 500;
         }
-        .back-link a:hover {
-            color: var(--proton-text);
+        a:hover {
+            text-decoration: underline;
         }
+
+        /* Command output styles */
         .command-output { 
             white-space: pre-wrap;
             margin: 0;
@@ -59,6 +51,53 @@ pub const OUTPUT_CSS: &str = r#"
             padding: 0.125rem 0.25rem;
             border-radius: 4px;
         }
+
+        /* Header info styles */
+        .header-info {
+            background-color: var(--proton-background);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .info-item {
+            display: flex;
+            gap: 0.5rem;
+            align-items: baseline;
+        }
+        .info-label {
+            color: var(--proton-text-secondary);
+            font-size: 0.875rem;
+            min-width: 80px;
+        }
+        .info-value {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            font-size: 0.875rem;
+            word-break: break-all;
+        }
+        h2 {
+            margin: 1rem 0;
+            font-size: 1.25rem;
+            color: var(--proton-text);
+        }
+
+        /* Message styles */
+        .message {
+            margin-top: 1rem;
+            padding: 1rem;
+            background-color: var(--proton-hover);
+            border-radius: 8px;
+            font-style: italic;
+            color: var(--proton-text-secondary);
+        }
+
+        /* Diff styles */
         .diff-del {
             background: #ffebee;
             color: #b71c1c;
@@ -74,18 +113,23 @@ pub const OUTPUT_CSS: &str = r#"
             margin-right: 0.5em;
             color: inherit;
         }
-        pre {
-            margin: 0;
-            font-family: inherit;
-            font-size: inherit;
-            line-height: inherit;
-        }
+
+        /* Form styles */
         form {
             background-color: var(--proton-background);
             padding: 1.5rem;
             border-radius: 12px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
             margin-top: 1.5rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--proton-text-secondary);
+            font-size: 0.875rem;
         }
         textarea {
             width: 100%;
@@ -104,6 +148,8 @@ pub const OUTPUT_CSS: &str = r#"
             border-color: var(--proton-blue);
             box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
         }
+
+        /* Button styles */
         .button-group {
             display: flex;
             gap: 1rem;
@@ -136,111 +182,6 @@ pub const OUTPUT_CSS: &str = r#"
         .button:hover {
             background-color: var(--proton-hover);
         }
-        .switch-container {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin: 1rem 0;
-        }
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 40px;
-            height: 20px;
-        }
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: var(--proton-border);
-            transition: .4s;
-            border-radius: 20px;
-        }
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 2px;
-            bottom: 2px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-        input:checked + .slider {
-            background-color: var(--proton-blue);
-        }
-        input:checked + .slider:before {
-            transform: translateX(20px);
-        }
-        .switch-label {
-            font-size: 0.875rem;
-            color: var(--proton-text-secondary);
-        }
-        .header-info {
-            background-color: var(--proton-background);
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1.5rem;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-        .info-item {
-            display: flex;
-            gap: 0.5rem;
-            align-items: baseline;
-        }
-        .info-label {
-            color: var(--proton-text-secondary);
-            font-size: 0.875rem;
-            min-width: 80px;
-        }
-        .info-value {
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-            font-size: 0.875rem;
-            word-break: break-all;
-        }
-        .message {
-            margin-top: 1rem;
-            padding: 1rem;
-            background-color: var(--proton-hover);
-            border-radius: 8px;
-            font-style: italic;
-            color: var(--proton-text-secondary);
-        }
-        .content-box {
-            background-color: var(--proton-background);
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-        h2 {
-            margin: 1rem 0;
-            font-size: 1.25rem;
-            color: var(--proton-text);
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: var(--proton-text-secondary);
-            font-size: 0.875rem;
-        }
     </style>
 "#;
 
@@ -248,13 +189,15 @@ pub const MAIN_CSS: &str = r#"
     <style>
         :root {
             --proton-blue: #6D4AFF;
-            --proton-blue-hover:rgb(206, 198, 236);
+            --proton-blue-hover: rgb(206, 198, 236);
             --proton-background: #FFFFFF;
             --proton-text: #1C1B1F;
             --proton-text-secondary: #4E4B66;
             --proton-border: #E5E7EB;
             --proton-hover: #F5F5F5;
         }
+
+        /* Base styles */
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             margin: 0;
@@ -272,11 +215,27 @@ pub const MAIN_CSS: &str = r#"
             max-width: none;
             padding: 2rem;
         }
+        a {
+            color: var(--proton-blue);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* Header styles */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 2rem;
+        }
+        h1 {
+            color: var(--proton-text);
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            font-weight: 600;
         }
         .view-toggle {
             display: flex;
@@ -299,12 +258,8 @@ pub const MAIN_CSS: &str = r#"
             height: 16px;
             stroke: currentColor;
         }
-        h1 {
-            color: var(--proton-text);
-            font-size: 2rem;
-            margin-bottom: 2rem;
-            font-weight: 600;
-        }
+
+        /* Filter styles */
         .filters {
             background-color: var(--proton-background);
             padding: 1.5rem;
@@ -332,27 +287,8 @@ pub const MAIN_CSS: &str = r#"
             border-color: var(--proton-blue);
             box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
         }
-        button {
-            padding: 0.75rem 1.5rem;
-            background-color: var(--proton-blue);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        button:hover {
-            background-color: var(--proton-blue-hover);
-        }
-        button[type="button"] {
-            background-color: transparent;
-            color: var(--proton-text);
-            border: 1px solid var(--proton-border);
-        }
-        button[type="button"]:hover {
-            background-color: var(--proton-hover);
-        }
+
+        /* Table styles */
         table {
             width: 100%;
             border-collapse: separate;
@@ -377,6 +313,12 @@ pub const MAIN_CSS: &str = r#"
         tbody:hover {
             background-color: var(--proton-blue-hover);
         }
+        tr.error-row {
+            background-color: #ffeaea !important;
+        }
+        tr.noop-row {
+            background-color: #aaaaaa !important;
+        }
         .message-row .message {
             font-size: 0.875rem;
             font-style: italic;
@@ -387,59 +329,31 @@ pub const MAIN_CSS: &str = r#"
         .message-row td {
             border-top: none;
         }
-        a {
-            color: var(--proton-blue);
-            text-decoration: none;
-            font-weight: 500;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        .output-preview {
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-            margin-top: 0.5rem;
-            padding: 0.75rem;
-            background-color: var(--proton-hover);
-            border: 1px solid var(--proton-border);
-            border-radius: 8px;
-            white-space: pre-wrap;
-            max-height: 100px;
-            overflow-y: auto;
-            font-size: 0.875rem;
-        }
-        .match-highlight {
-            background-color: rgba(109, 74, 255, 0.1);
-            color: var(--proton-blue);
-            padding: 0.125rem 0.25rem;
-            border-radius: 4px;
-        }
-        tr.error-row {
-            background-color: #ffeaea !important;
-        }
-        tr.noop-row {
-            background-color: #aaaaaa !important;
-        }
-        .copy-button {
-            background: none;
+
+        /* Button styles */
+        button {
+            padding: 0.75rem 1.5rem;
+            background-color: var(--proton-blue);
+            color: white;
             border: none;
-            color: var(--proton-text-secondary);
+            border-radius: 8px;
             cursor: pointer;
-            padding: 0.25rem;
-            margin-left: 0.5rem;
-            border-radius: 4px;
+            font-weight: 500;
             transition: all 0.2s ease;
         }
-        .copy-button:hover {
-            background-color: var(--proton-hover);
+        button:hover {
+            background-color: var(--proton-blue-hover);
+        }
+        button[type="button"] {
+            background-color: transparent;
             color: var(--proton-text);
+            border: 1px solid var(--proton-border);
         }
-        .copy-button svg {
-            width: 16px;
-            height: 16px;
+        button[type="button"]:hover {
+            background-color: var(--proton-hover);
         }
-        .copy-button.copied {
-            color: var(--proton-blue);
-        }
+
+        /* Switch styles */
         .switch-container {
             display: flex;
             align-items: center;
@@ -488,8 +402,45 @@ pub const MAIN_CSS: &str = r#"
             font-size: 0.875rem;
             color: var(--proton-text-secondary);
         }
+
+        /* Output preview styles */
+        .output-preview {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background-color: var(--proton-hover);
+            border: 1px solid var(--proton-border);
+            border-radius: 8px;
+            white-space: pre-wrap;
+            max-height: 100px;
+            overflow-y: auto;
+            font-size: 0.875rem;
+        }
+
+        /* Copy button styles */
+        .copy-button {
+            background: none;
+            border: none;
+            color: var(--proton-text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+            margin-left: 0.5rem;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+        .copy-button:hover {
+            background-color: var(--proton-hover);
+            color: var(--proton-text);
+        }
+        .copy-button svg {
+            width: 16px;
+            height: 16px;
+        }
+        .copy-button.copied {
+            color: var(--proton-blue);
+        }
     </style>
-    "#;
+"#;
 
 pub const CAPTURE_TYPE_RUN_SVG: &str = r#"<svg fill="none" stroke="currentColor" stroke-width="1" width="24" height="24">
                     <path d="M4 6l4 4-4 4" stroke-linecap="round"/>
