@@ -6,7 +6,6 @@ use resources::{
     CAPTURE_TYPE_RUN_SVG,
     COPY_ICON_SVG,
     EDIT_ICON_SVG,
-    MAIN_CSS,
 };
 use super::{ resources, ProdlogUiState };
 
@@ -22,7 +21,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 <html>
 <head>
     <title>Prodlog Viewer</title>
-    {MAIN_CSS}
+    <link rel="stylesheet" href="/static/index.css">
 </head>
 <body>
     <div class="container" id="container">

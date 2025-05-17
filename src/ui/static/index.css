@@ -1,0 +1,252 @@
+:root {
+    --proton-blue: #6D4AFF;
+    --proton-blue-hover: rgb(206, 198, 236);
+    --proton-background: #FFFFFF;
+    --proton-text: #1C1B1F;
+    --proton-text-secondary: #4E4B66;
+    --proton-border: #E5E7EB;
+    --proton-hover: #F5F5F5;
+}
+
+/* Base styles */
+body { 
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--proton-background);
+    color: var(--proton-text);
+}
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    transition: max-width 0.3s ease;
+}
+.container.full-width {
+    max-width: none;
+    padding: 2rem;
+}
+a {
+    color: var(--proton-blue);
+    text-decoration: none;
+    font-weight: 500;
+}
+a:hover {
+    text-decoration: underline;
+}
+
+/* Header styles */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+h1 {
+    color: var(--proton-text);
+    font-size: 2rem;
+    margin-bottom: 2rem;
+    font-weight: 600;
+}
+.view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background-color: var(--proton-blue);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+.view-toggle:hover {
+    background-color: var(--proton-blue-hover);
+}
+.view-toggle svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+}
+
+/* Filter styles */
+.filters {
+    background-color: var(--proton-background);
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+}
+.filters form {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+input, select {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--proton-border);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: var(--proton-text);
+    background-color: var(--proton-background);
+    transition: all 0.2s ease;
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--proton-blue);
+    box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
+}
+
+/* Table styles */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 1rem;
+    background-color: var(--proton-background);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    table-layout: fixed;
+}
+th, td {
+    padding: 1rem;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+tbody {
+    border-bottom: 1px solid var(--proton-border);
+}
+tbody:hover {
+    background-color: var(--proton-blue-hover);
+}
+tr.error-row {
+    background-color: #ffeaea !important;
+}
+tr.noop-row {
+    background-color: #aaaaaa !important;
+}
+.message-row .message {
+    font-size: 0.875rem;
+    font-style: italic;
+    color: var(--proton-text-secondary);
+    padding-top: 0;
+    padding-bottom: 1rem;
+}
+.message-row td {
+    border-top: none;
+}
+
+/* Button styles */
+button {
+    padding: 0.75rem 1.5rem;
+    background-color: var(--proton-blue);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+button:hover {
+    background-color: var(--proton-blue-hover);
+}
+button[type="button"] {
+    background-color: transparent;
+    color: var(--proton-text);
+    border: 1px solid var(--proton-border);
+}
+button[type="button"]:hover {
+    background-color: var(--proton-hover);
+}
+
+/* Switch styles */
+.switch-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+}
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--proton-border);
+    transition: .4s;
+    border-radius: 20px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+input:checked + .slider {
+    background-color: var(--proton-blue);
+}
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+.switch-label {
+    font-size: 0.875rem;
+    color: var(--proton-text-secondary);
+}
+
+/* Output preview styles */
+.output-preview {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background-color: var(--proton-hover);
+    border: 1px solid var(--proton-border);
+    border-radius: 8px;
+    white-space: pre-wrap;
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 0.875rem;
+}
+
+/* Copy button styles */
+.copy-button {
+    background: none;
+    border: none;
+    color: var(--proton-text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-left: 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+.copy-button:hover {
+    background-color: var(--proton-hover);
+    color: var(--proton-text);
+}
+.copy-button svg {
+    width: 16px;
+    height: 16px;
+}
+.copy-button.copied {
+    color: var(--proton-blue);
+}

@@ -5,10 +5,11 @@ use std::sync::Arc;
 use crate::sinks::UiSource;
 
 mod ansi_to_html;
-mod detail;
+mod entry;
 mod index;
 mod resources;
 mod save;
+mod static_files;
 
 type ProdlogUiState = Arc<RwLock<Box<dyn UiSource>>>;
 
@@ -26,10 +27,11 @@ fn highlight_matches(text: &str, search_term: &str) -> String {
 pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
         .route("/", get(index::handle_index))
-        .route("/output/:uuid", get(detail::handle_output))
-        .route("/diff/:uuid", get(detail::handle_diff))
-        .route("/edit/:uuid", get(detail::handle_edit))
+        .route("/output/:uuid", get(entry::handle_output))
+        .route("/diff/:uuid", get(entry::handle_diff))
+        .route("/edit/:uuid", get(entry::handle_edit))
         .route("/save", axum::routing::post(save::handle_save))
+        .route("/static/*path", get(static_files::serve_file))
         .with_state(sink);
 
     let addr = format!("0.0.0.0:{}", port);

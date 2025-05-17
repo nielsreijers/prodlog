@@ -4,8 +4,7 @@ use chrono::Duration;
 use similar::{ TextDiff, ChangeTag };
 use html_escape;
 use crate::{ model::{ CaptureType, CaptureV2_3 }, sinks::Filters };
-use resources::OUTPUT_CSS;
-use super::{ resources, ProdlogUiState };
+use super::ProdlogUiState;
 
 fn generate_entry_header(entry: &CaptureV2_3) -> String {
     let host = &entry.host;
@@ -73,7 +72,7 @@ fn generate_detail_page(entry: &CaptureV2_3, title: &str, content: &str) -> Stri
 <html>
 <head>
     <title>{title}</title>
-    {OUTPUT_CSS}
+    <link rel="stylesheet" href="/static/entry.css">
 </head>
 <body>
     <div class="container">
