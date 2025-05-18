@@ -10,18 +10,19 @@ use termion::input::TermReadEventsAndRaw;
 use nix::pty::{ ForkptyResult, Winsize };
 use nix::ioctl_write_ptr_bad;
 use termion::terminal_size;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{ mpsc, RwLock };
 use tokio::signal::unix::{ signal, SignalKind };
 use nix::unistd::execvp;
 use std::ffi::CString;
 use chrono::Utc;
-use termion::{color, style};
+use termion::{ color, style };
 use std::fs;
 use clap::Parser;
-use std::path::PathBuf; // Use PathBuf for paths
+use std::path::PathBuf;
 use dirs;
-use uuid::Uuid; // Add uuid dependency
-use model::{CaptureType, CaptureV2_3};
+use uuid::Uuid;
+use whoami;
+use model::{ CaptureType, CaptureV2_4 };
 
 mod ui;
 mod sinks;
@@ -40,19 +41,29 @@ const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Add metadata
 struct CliArgs {
-    #[arg(long, value_name = "DIR", default_value = ".local/share/prodlog", help = "Directory to store production logs")]
+    #[arg(
+        long,
+        value_name = "DIR",
+        default_value = ".local/share/prodlog",
+        help = "Directory to store production logs"
+    )]
     dir: PathBuf,
 
     #[arg(long, value_name = "PORT", default_value = "5000", help = "Port to run the UI on")]
     port: u16,
 
-    #[arg(long, value_name = "IMPORT", default_value = None, help = "Import a prodlog json or sqlite file")]
+    #[arg(
+        long,
+        value_name = "IMPORT",
+        default_value = None,
+        help = "Import a prodlog json or sqlite file"
+    )]
     import: Option<String>,
 }
 
 enum StreamState {
     InProgress(String),
-    Completed(String, Vec<String>, usize)
+    Completed(String, Vec<String>, usize),
 }
 
 enum StdoutHandlerState {
@@ -63,20 +74,25 @@ enum StdoutHandlerState {
 struct StdoutHandler {
     stdout: RawTerminal<Stdout>,
     child_stdin_tx: mpsc::Sender<Vec<u8>>,
-    capturing: Option<CaptureV2_3>,
+    capturing: Option<CaptureV2_4>,
     state: StdoutHandlerState,
     sinks: Vec<Box<dyn sinks::Sink>>,
 }
 
 // TODO unify these different ways of printing messages
 fn prodlog_print<C: Color>(msg: &str, color: C) {
-    print!("{}\n\r", format!("{}{}{}{}{}{}",
-        style::Bold,
-        color::Fg(color),
-        style::Blink,
-        "PRODLOG: ",
-        style::Reset,
-        msg));
+    print!(
+        "{}\n\r",
+        format!(
+            "{}{}{}{}{}{}",
+            style::Bold,
+            color::Fg(color),
+            style::Blink,
+            "PRODLOG: ",
+            style::Reset,
+            msg
+        )
+    );
 }
 
 fn prodlog_panic(msg: &str) -> ! {
@@ -93,11 +109,15 @@ fn print_prodlog_message(msg: &str) {
 }
 
 impl StdoutHandler {
-    fn new(child_stdin_tx: mpsc::Sender<Vec<u8>>, stdout: RawTerminal<Stdout>, sinks: Vec<Box<dyn sinks::Sink>>) -> Self {
+    fn new(
+        child_stdin_tx: mpsc::Sender<Vec<u8>>,
+        stdout: RawTerminal<Stdout>,
+        sinks: Vec<Box<dyn sinks::Sink>>
+    ) -> Self {
         Self { child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal, sinks }
     }
 
-    fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error>  {
+    fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
         self.stdout.write(buf)?;
         self.stdout.flush()?;
         if let Some(capture) = &mut self.capturing {
@@ -106,30 +126,49 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn start_capturing_run(host: &str, cwd: &str, cmd: &str, message: &str) -> Result<CaptureV2_3, std::io::Error> {
+    fn start_capturing_run(
+        host: &str,
+        cwd: &str,
+        cmd: &str,
+        message: &str,
+        remote_user: &str
+    ) -> Result<CaptureV2_4, std::io::Error> {
         let start_time = Utc::now();
 
-        Ok(CaptureV2_3 {
+        Ok(CaptureV2_4 {
             capture_type: CaptureType::Run,
             uuid: Uuid::new_v4(),
             host: host.to_string(),
             cwd: cwd.to_string(),
             cmd: cmd.to_string(),
             start_time,
-            captured_output: Vec::new(),
-            message: message.to_string(),
             duration_ms: 0,
+            message: message.to_string(),
             is_noop: false,
             exit_code: -1,
+            local_user: whoami::username(),
+            remote_user: remote_user.to_string(),
             filename: "".to_string(),
+            terminal_rows: 0,
+            terminal_cols: 0,
+            captured_output: Vec::new(),
             original_content: "".as_bytes().to_vec(),
             edited_content: "".as_bytes().to_vec(),
         })
     }
 
-    fn stop_capturing_run(capture: &mut CaptureV2_3, exit_code: i32, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+    fn stop_capturing_run(
+        capture: &mut CaptureV2_4,
+        exit_code: i32,
+        sinks: &mut Vec<Box<dyn sinks::Sink>>
+    ) -> Result<(), std::io::Error> {
         capture.exit_code = exit_code;
-        capture.duration_ms = Utc::now().signed_duration_since(capture.start_time).num_milliseconds() as u64;
+        capture.duration_ms = Utc::now()
+            .signed_duration_since(capture.start_time)
+            .num_milliseconds() as u64;
+        let (cols, rows) = terminal_size()?;
+        capture.terminal_cols = cols;
+        capture.terminal_rows = rows;
         for sink in sinks {
             match sink.add_entry(capture) {
                 Ok(_) => (),
@@ -140,10 +179,18 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn start_capturing_edit(host: &str, cwd: &str, cmd: &str, message: &str, filename: &str, original_content: Vec<u8>) -> Result<CaptureV2_3, std::io::Error> {
+    fn start_capturing_edit(
+        host: &str,
+        cwd: &str,
+        cmd: &str,
+        message: &str,
+        remote_user: &str,
+        filename: &str,
+        original_content: Vec<u8>
+    ) -> Result<CaptureV2_4, std::io::Error> {
         let start_time = Utc::now();
 
-        Ok(CaptureV2_3 {
+        Ok(CaptureV2_4 {
             capture_type: CaptureType::Edit,
             uuid: Uuid::new_v4(),
             host: host.to_string(),
@@ -155,15 +202,26 @@ impl StdoutHandler {
             duration_ms: 0,
             is_noop: false,
             exit_code: -1,
+            local_user: whoami::username(),
+            remote_user: remote_user.to_string(),
             filename: filename.to_string(),
             original_content: original_content,
             edited_content: "".as_bytes().to_vec(),
+            terminal_rows: 0,
+            terminal_cols: 0,
         })
     }
 
-    fn stop_capturing_edit(capture: &mut CaptureV2_3, exit_code: i32, edited_content: Vec<u8>, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+    fn stop_capturing_edit(
+        capture: &mut CaptureV2_4,
+        exit_code: i32,
+        edited_content: Vec<u8>,
+        sinks: &mut Vec<Box<dyn sinks::Sink>>
+    ) -> Result<(), std::io::Error> {
         capture.exit_code = exit_code;
-        capture.duration_ms = Utc::now().signed_duration_since(capture.start_time).num_milliseconds() as u64;
+        capture.duration_ms = Utc::now()
+            .signed_duration_since(capture.start_time)
+            .num_milliseconds() as u64;
         capture.edited_content = edited_content;
         for sink in sinks {
             match sink.add_entry(capture) {
@@ -175,13 +233,20 @@ impl StdoutHandler {
         Ok(())
     }
 
-    fn read_until_terminator(&self, buffer: &[u8], mut pos: usize, n: usize, state: &StreamState) -> StreamState {
+    fn read_until_terminator(
+        &self,
+        buffer: &[u8],
+        mut pos: usize,
+        n: usize,
+        state: &StreamState
+    ) -> StreamState {
         if let StreamState::InProgress(partial) = state {
-            let start= pos;
+            let start = pos;
             while pos < n && buffer[pos] != b';' {
                 pos += 1;
             }
-            let new_value = partial.to_owned() + &String::from_utf8_lossy(&buffer[start..pos]).to_string();
+            let new_value =
+                partial.to_owned() + &String::from_utf8_lossy(&buffer[start..pos]).to_string();
             if pos == n {
                 // Ran out of data, wait for next chunk
                 StreamState::InProgress(new_value)
@@ -194,7 +259,9 @@ impl StdoutHandler {
                 let args: Vec<String> = if rest.is_empty() {
                     Vec::new()
                 } else {
-                    rest.split(':').map(|s| helpers::base64_decode_string(s)).collect()
+                    rest.split(':')
+                        .map(|s| helpers::base64_decode_string(s))
+                        .collect()
                 };
                 StreamState::Completed(cmd, args, pos)
             }
@@ -231,7 +298,9 @@ impl StdoutHandler {
                     }
                     if bytes_matched == PRODLOG_CMD_PREFIX.len() {
                         // Command prefix matched, start reading the command.
-                        self.state = StdoutHandlerState::ReadingProdlogCommand(StreamState::InProgress("".to_string()));
+                        self.state = StdoutHandlerState::ReadingProdlogCommand(
+                            StreamState::InProgress("".to_string())
+                        );
                     } else if pos == n {
                         // Ran out of data, wait for next chunk
                         self.state = StdoutHandlerState::MatchingPrefix(bytes_matched);
@@ -255,87 +324,174 @@ impl StdoutHandler {
                                 CMD_IS_INACTIVE => {
                                     print_prodlog_message("Prodlog is currently active!");
                                     self.state = StdoutHandlerState::Normal;
-                                },
+                                }
                                 CMD_ARE_YOU_RUNNING => {
                                     if let Some(version) = args.get(0) {
                                         if *version != env!("CARGO_PKG_VERSION") {
-                                            print_prodlog_message(&format!("Error: Unsupported version: {} (expected {})", version, env!("CARGO_PKG_VERSION")));
+                                            print_prodlog_message(
+                                                &format!(
+                                                    "Error: Unsupported version: {} (expected {})",
+                                                    version,
+                                                    env!("CARGO_PKG_VERSION")
+                                                )
+                                            );
                                         } else {
-                                            print_prodlog_message("Telling server side prodlog recording is active:");
+                                            print_prodlog_message(
+                                                "Telling server side prodlog recording is active:"
+                                            );
                                             // TODO: figure out why async send doesn't work here. It works fine in run_parent. Are we deadlocking?
-                                            self.child_stdin_tx.blocking_send(REPLY_YES_PRODLOG_IS_RUNNING.to_vec()).unwrap();        
+                                            self.child_stdin_tx
+                                                .blocking_send(
+                                                    REPLY_YES_PRODLOG_IS_RUNNING.to_vec()
+                                                )
+                                                .unwrap();
                                         }
                                     } else {
                                         print_prodlog_message("Error: Missing version argument");
                                     }
                                     self.state = StdoutHandlerState::Normal;
                                     pos = new_pos;
-                                },
+                                }
                                 CMD_START_CAPTURE_RUN => {
                                     // TODO: error handling
-                                    if let (Some(host), Some(cwd), Some(cmd), Some(message))
-                                         = (args.get(0), args.get(1), args.get(2), args.get(3)) {
-                                        print_prodlog_message(&format!("Starting capture of {} on {}:{}", cmd, host, cwd));
-                                        self.capturing = Some(Self::start_capturing_run(host, cwd, cmd, message)?);
+                                    if
+                                        let (Some(host), Some(cwd), Some(cmd), Some(message), Some(remote_user)) = (
+                                            args.get(0),
+                                            args.get(1),
+                                            args.get(2),
+                                            args.get(3),
+                                            args.get(4),
+                                        )
+                                    {
+                                        print_prodlog_message(
+                                            &format!(
+                                                "Starting capture of {} on {}:{}",
+                                                cmd,
+                                                host,
+                                                cwd
+                                            )
+                                        );
+                                        self.capturing = Some(
+                                            Self::start_capturing_run(host, cwd, cmd, message, remote_user)?
+                                        );
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     } else {
-                                        print_prodlog_message("Error: Missing arguments for START CAPTURE RUN");
+                                        print_prodlog_message(
+                                            "Error: Missing arguments for START CAPTURE RUN"
+                                        );
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     }
-                                },
+                                }
                                 CMD_STOP_CAPTURE_RUN => {
-                                    let exit_code = args.get(0)
+                                    let exit_code = args
+                                        .get(0)
                                         .and_then(|s| s.parse::<i32>().ok())
                                         .unwrap_or(1000);
                                     if let Some(capture) = &mut self.capturing {
-                                        print_prodlog_message(&format!("Stopping capture of {} on {}:{} with exit code {}",
-                                                                            capture.cmd,
-                                                                            capture.host,
-                                                                            capture.cwd,
-                                                                            exit_code));
-                                        Self::stop_capturing_run(capture, exit_code, &mut self.sinks)?;
+                                        print_prodlog_message(
+                                            &format!(
+                                                "Stopping capture of {} on {}:{} with exit code {}",
+                                                capture.cmd,
+                                                capture.host,
+                                                capture.cwd,
+                                                exit_code
+                                            )
+                                        );
+                                        Self::stop_capturing_run(
+                                            capture,
+                                            exit_code,
+                                            &mut self.sinks
+                                        )?;
                                     } else {
-                                        print_prodlog_message("Warning: Tried to stop capture, but no capture was active");
+                                        print_prodlog_message(
+                                            "Warning: Tried to stop capture, but no capture was active"
+                                        );
                                     }
                                     self.capturing = None;
                                     self.state = StdoutHandlerState::Normal;
-                                },
+                                }
                                 CMD_START_CAPTURE_EDIT => {
                                     // TODO: error handling
-                                    if let (Some(host), Some(cwd), Some(cmd), Some(message), Some(filename), Some(original_content))
-                                         = (args.get(0), args.get(1), args.get(2), args.get(3), args.get(4), args.get(5)) {
-                                        print_prodlog_message(&format!("Starting capture of editing file {} on {}", filename, host));
-                                        let original_content = helpers::base64_decode(original_content);
-                                        self.capturing = Some(Self::start_capturing_edit(host, cwd, cmd, message, filename, original_content)?);
+                                    if  let (
+                                            Some(host),
+                                            Some(cwd),
+                                            Some(cmd),
+                                            Some(message),
+                                            Some(remote_user),
+                                            Some(filename),
+                                            Some(original_content),
+                                        ) = (
+                                            args.get(0),
+                                            args.get(1),
+                                            args.get(2),
+                                            args.get(3),
+                                            args.get(4),
+                                            args.get(5),
+                                            args.get(6))
+                                    {
+                                        print_prodlog_message(
+                                            &format!(
+                                                "Starting capture of editing file {} on {}",
+                                                filename,
+                                                host
+                                            )
+                                        );
+                                        let original_content =
+                                            helpers::base64_decode(original_content);
+                                        self.capturing = Some(
+                                            Self::start_capturing_edit(
+                                                host,
+                                                cwd,
+                                                cmd,
+                                                message,
+                                                remote_user,
+                                                filename,
+                                                original_content
+                                            )?
+                                        );
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     } else {
-                                        print_prodlog_message("Error: Missing arguments for START CAPTURE EDIT");
+                                        print_prodlog_message(
+                                            "Error: Missing arguments for START CAPTURE EDIT"
+                                        );
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;
                                     }
-                                },
+                                }
                                 CMD_STOP_CAPTURE_EDIT => {
                                     let empty = "".to_string();
-                                    let exit_code = args.get(0)
+                                    let exit_code = args
+                                        .get(0)
                                         .and_then(|s| s.parse::<i32>().ok())
                                         .unwrap_or(1000);
                                     let edited_content = args.get(1).unwrap_or(&empty);
                                     let edited_content = helpers::base64_decode(edited_content);
                                     if let Some(capture) = &mut self.capturing {
-                                        print_prodlog_message(&format!("Stopping capture of editing file {} on {} with exit code {}",
-                                                                            capture.filename,
-                                                                            capture.host,
-                                                                            exit_code));
-                                        Self::stop_capturing_edit(capture, exit_code, edited_content, &mut self.sinks)?;
+                                        print_prodlog_message(
+                                            &format!(
+                                                "Stopping capture of editing file {} on {} with exit code {}",
+                                                capture.filename,
+                                                capture.host,
+                                                exit_code
+                                            )
+                                        );
+                                        Self::stop_capturing_edit(
+                                            capture,
+                                            exit_code,
+                                            edited_content,
+                                            &mut self.sinks
+                                        )?;
                                     } else {
-                                        print_prodlog_message("Warning: Tried to stop capture, but no capture was active");
+                                        print_prodlog_message(
+                                            "Warning: Tried to stop capture, but no capture was active"
+                                        );
                                     }
                                     self.capturing = None;
                                     self.state = StdoutHandlerState::Normal;
-                                },
+                                }
                                 _ => {
                                     // Unknown command. Just print what we saw on the child's stdout.
                                     self.write_and_flush(PRODLOG_CMD_PREFIX)?;
@@ -346,7 +502,7 @@ impl StdoutHandler {
                             }
                         }
                     }
-                },
+                }
             }
         }
         Ok(())
@@ -381,7 +537,7 @@ fn get_sinks(prodlog_dir: &PathBuf) -> Vec<Box<dyn sinks::Sink>> {
     vec![
         Box::new(sinks::obsidian::ObsidianSink::new(&prodlog_dir)),
         Box::new(sinks::json::JsonSink::new(&json_file)),
-        Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file)),
+        Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file))
     ]
 }
 
@@ -462,22 +618,24 @@ async fn run_parent(
 
 fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
     let import_file = PathBuf::from(import_file);
-        
+
     if !import_file.exists() {
         prodlog_panic(&format!("Error: Import file {:?} does not exist", import_file));
     }
 
     print_prodlog_message(&format!("Importing from {:?}", import_file));
-    let source_sink: Box<dyn sinks::UiSource> = match import_file.extension().unwrap_or_default().to_str().unwrap_or_default() {
-        "json" => {
-            Box::new(sinks::json::JsonSink::new(&import_file))
-        },
+    let source_sink: Box<dyn sinks::UiSource> = match
+        import_file.extension().unwrap_or_default().to_str().unwrap_or_default()
+    {
+        "json" => { Box::new(sinks::json::JsonSink::new(&import_file)) }
         "sqlite" => {
             // TODO: copy to tmp file so we don't modify the original if the schema changed.
             Box::new(sinks::sqlite::SqliteSink::new(&import_file))
-        },
+        }
         _ => {
-            prodlog_panic(&format!("Error: Import file must be .json or .sqlite, got {:?}", import_file));
+            prodlog_panic(
+                &format!("Error: Import file must be .json or .sqlite, got {:?}", import_file)
+            );
         }
     };
 
@@ -487,7 +645,9 @@ fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<()
     for entry in entries {
         for sink in sinks.iter_mut() {
             if let Err(e) = sink.add_entry(&entry) {
-                print_prodlog_warning(&format!("Error writing entry {} to sink: {}", entry.uuid, e));
+                print_prodlog_warning(
+                    &format!("Error writing entry {} to sink: {}", entry.uuid, e)
+                );
             }
         }
     }
@@ -499,7 +659,7 @@ fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<()
 #[tokio::main]
 async fn main() {
     let cli_args = CliArgs::parse();
-    
+
     // Get the log directory path
     let prodlog_dir = if cli_args.dir.is_absolute() {
         cli_args.dir.clone()
@@ -509,7 +669,7 @@ async fn main() {
         home_dir.join(&cli_args.dir)
     };
     print_prodlog_message(&format!("prodlog logging to {:?}", prodlog_dir));
-    
+
     // Create the directory doesn't exist
     let mut sinks = get_sinks(&prodlog_dir);
 
@@ -523,7 +683,9 @@ async fn main() {
     tokio::spawn(async move {
         // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
         let sqlite_file = prodlog_dir.join("prodlog.sqlite");
-        let sink: Arc<RwLock<Box<dyn UiSource>>> = Arc::new(RwLock::new(Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file))));
+        let sink: Arc<RwLock<Box<dyn UiSource>>> = Arc::new(
+            RwLock::new(Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file)))
+        );
         ui::run_ui(sink, ui_port).await;
     });
 

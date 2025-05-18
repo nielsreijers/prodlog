@@ -1,6 +1,6 @@
 [package]
 name = "prodlog"
-version = "2.3.0"
+version = "2.4.0"
 edition = "2021"
 authors = ["Niels Reijers <prodlog@mail.nielsreijers.com>"]
 description = "A tool for logging and viewing terminal output with a web interface"
@@ -38,3 +38,4 @@ serde_with = { version = "3.12.0", features = ["base64"] }
 similar = "2.7.0"
 html-escape = "0.2.13"
 include_dir = "0.7"
+whoami = "1.5.1"

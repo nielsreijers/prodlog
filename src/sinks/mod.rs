@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use uuid::Uuid;
-use crate::model::CaptureV2_3;
+use crate::model::CaptureV2_4;
 
 
 pub mod obsidian;
@@ -9,7 +9,7 @@ pub mod json;
 pub mod sqlite;
 
 pub trait Sink: Send + Sync {
-    fn add_entry(&mut self, capture: &CaptureV2_3) -> Result<(), std::io::Error>;
+    fn add_entry(&mut self, capture: &CaptureV2_4) -> Result<(), std::io::Error>;
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -22,8 +22,8 @@ pub struct Filters {
 }
 
 pub trait UiSource: Sink + Send + Sync {
-    fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_3>, std::io::Error>;
-    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_3>, std::io::Error>;
+    fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_4>, std::io::Error>;
+    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_4>, std::io::Error>;
 }
 
 fn get_short_command(cmd: &str) -> String {

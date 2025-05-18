@@ -20,23 +20,26 @@ impl JsonSink {
 
 
 // TMP pub only while UI reads from JSON and not yet from SQLite
-pub fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_3, std::io::Error> {
+pub fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_4, std::io::Error> {
     if let Ok(content) = fs::read_to_string(&json_path) {
         if let Ok(data) = serde_json::from_str(&content) {
             return Ok(data);
         }
         if let Ok(data) = serde_json::from_str(&content) {
-            return Ok(v2_2_to_v2_3(data));
+            return Ok(v2_3_to_v2_4(data));
         }
         if let Ok(data) = serde_json::from_str(&content) {
-            return Ok(v2_2_to_v2_3(v2_1_to_v2_2(data)));
+            return Ok(v2_3_to_v2_4(v2_2_to_v2_3(data)));
         }
         if let Ok(data) = serde_json::from_str(&content) {
-            return Ok(v2_2_to_v2_3(v2_1_to_v2_2(v2_0_to_v2_1(data))));
+            return Ok(v2_3_to_v2_4(v2_2_to_v2_3(v2_1_to_v2_2(data))));
+        }
+        if let Ok(data) = serde_json::from_str(&content) {
+            return Ok(v2_3_to_v2_4(v2_2_to_v2_3(v2_1_to_v2_2(v2_0_to_v2_1(data)))));
         }
         prodlog_panic(&format!("Failed to read prodlog data from {}", json_path.display()));
     } else {
-        Ok(ProdlogDataV2_3 {
+        Ok(ProdlogDataV2_4 {
             prodlog_version: env!("CARGO_PKG_VERSION").to_string(),
             entries: vec![],
         })
@@ -44,7 +47,7 @@ pub fn read_prodlog_data(json_path: &PathBuf) -> Result<ProdlogDataV2_3, std::io
 }
 
 impl Sink for JsonSink {
-    fn add_entry(&mut self, capture: &CaptureV2_3) -> Result<(), std::io::Error> {
+    fn add_entry(&mut self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
         // Read existing JSON file
         let mut prodlog_data = read_prodlog_data(&self.prodlog_file)?;
         
@@ -61,7 +64,7 @@ impl Sink for JsonSink {
 }
 
 impl UiSource for JsonSink {
-    fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_3>, std::io::Error> {
+    fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_4>, std::io::Error> {
         let data = read_prodlog_data(&self.prodlog_file)?;
             let mut filtered_entries = Vec::new();
         
@@ -109,7 +112,7 @@ impl UiSource for JsonSink {
         Ok(filtered_entries)
     }
 
-    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_3>, std::io::Error> {
+    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_4>, std::io::Error> {
         let data = read_prodlog_data(&self.prodlog_file)?;
         let entry = data.entries.into_iter().find(|e| e.uuid == uuid);
         Ok(entry)

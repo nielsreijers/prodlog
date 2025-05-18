@@ -3,10 +3,10 @@ use uuid::Uuid;
 use chrono::Duration;
 use similar::{ TextDiff, ChangeTag };
 use html_escape;
-use crate::{ model::{ CaptureType, CaptureV2_3 }, sinks::Filters };
+use crate::{ model::{ CaptureType, CaptureV2_4 }, sinks::Filters };
 use super::ProdlogUiState;
 
-fn generate_entry_header(entry: &CaptureV2_3) -> String {
+fn generate_entry_header(entry: &CaptureV2_4) -> String {
     let host = &entry.host;
     let cmd = &entry.cmd;
     let cwd = &entry.cwd;
@@ -65,7 +65,7 @@ fn generate_entry_header(entry: &CaptureV2_3) -> String {
     )
 }
 
-fn generate_detail_page(entry: &CaptureV2_3, title: &str, content: &str) -> String {
+fn generate_detail_page(entry: &CaptureV2_4, title: &str, content: &str) -> String {
     let header = generate_entry_header(entry);
     format!(
         r#"<!DOCTYPE html>
@@ -88,7 +88,7 @@ fn generate_detail_page(entry: &CaptureV2_3, title: &str, content: &str) -> Stri
 
 }
 
-fn generate_output_html(entry: &CaptureV2_3, output_filter: Option<&str>) -> String {
+fn generate_output_html(entry: &CaptureV2_4, output_filter: Option<&str>) -> String {
     let decoded_output = entry.output_as_string();
     let html_output = super::ansi_to_html::ansi_to_html(&decoded_output);
     let highlighted_output = if let Some(filter) = output_filter {
@@ -148,7 +148,7 @@ fn simple_diff(orig: &str, edited: &str) -> String {
     html
 }
 
-fn generate_diff_html(entry: &CaptureV2_3) -> String {
+fn generate_diff_html(entry: &CaptureV2_4) -> String {
     if entry.capture_type != crate::model::CaptureType::Edit {
         return "Not an edit entry".to_string();
     }
@@ -182,7 +182,7 @@ pub async fn handle_diff(
     }
 }
 
-fn generate_edit_html(entry: &CaptureV2_3) -> String {
+fn generate_edit_html(entry: &CaptureV2_4) -> String {
     let message = html_escape::encode_text(&entry.message);
     let is_noop_checked = if entry.is_noop { "checked" } else { "" };
     let uuid = entry.uuid;

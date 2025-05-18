@@ -1,4 +1,5 @@
 use chrono::Duration;
+use r2d2::PooledConnection;
 use rusqlite::params;
 use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::OptionalExtension;
@@ -11,6 +12,33 @@ use r2d2_sqlite::SqliteConnectionManager;
 
 pub struct SqliteSink {
     pool: Arc<r2d2::Pool<SqliteConnectionManager>>,
+}
+
+fn migrate_up_one(
+    conn: &PooledConnection<SqliteConnectionManager>,
+    version: &str
+) -> rusqlite::Result<String> {
+    match version {
+        "2.2.0" => {
+            conn.execute(
+                "ALTER TABLE prodlog_entries ADD COLUMN is_noop BOOLEAN DEFAULT FALSE",
+                []
+            )?;
+            Ok("2.3.0".to_string())
+        }
+        "2.3.0" => {
+            conn.execute("ALTER TABLE prodlog_entries ADD COLUMN local_user TEXT DEFAULT ''", [])?;
+            conn.execute("ALTER TABLE prodlog_entries ADD COLUMN remote_user TEXT DEFAULT ''", [])?;
+            conn.execute("ALTER TABLE prodlog_entries ADD COLUMN terminal_rows INT DEFAULT 0", [])?;
+            conn.execute("ALTER TABLE prodlog_entries ADD COLUMN terminal_cols INT DEFAULT 0", [])?;
+            Ok("2.4.0".to_string())
+        }
+        _ => {
+            prodlog_panic(
+                &format!("Database schema version {} is not supported. Please upgrade Prodlog.", version)
+            );
+        }
+    }
 }
 
 impl SqliteSink {
@@ -56,30 +84,19 @@ impl SqliteSink {
 
         let current_version = env!("CARGO_PKG_VERSION").to_string();
         match self.get_schema_version()? {
-            (Some(version), true) if version == current_version => {
+            (Some(version), false) if version == current_version => {
                 print_prodlog_message("Database is up to date.");
             }
-            (Some(version), false) if version == "2.2.0" => {
-                print_prodlog_warning(
-                    &format!("Upgrading database from version {} to {}", version, current_version)
-                );
-                self.set_schema_version(current_version.as_str(), true)?;
-                conn.execute(
-                    "ALTER TABLE prodlog_entries ADD COLUMN is_noop BOOLEAN DEFAULT FALSE",
-                    []
-                )?;
-                self.set_schema_version(current_version.as_str(), false)?;
+            (Some(version), false) => {
+                print_prodlog_warning(&format!("Upgrading database from version: {}", version));
+                self.set_schema_version(version.as_str(), true)?;
+                let new_version = migrate_up_one(&conn, &version)?;
+                self.set_schema_version(new_version.as_str(), false)?;
+                print_prodlog_warning(&format!("    ==> new version: {}", new_version));
+                self.migrate()?;
             }
             (_, true) => {
                 prodlog_panic("Database is dirty and needs to be fixed manually.");
-            }
-            (Some(version), false) => {
-                if version == env!("CARGO_PKG_VERSION").to_string() {
-                    return Ok(());
-                }
-                prodlog_panic(
-                    &format!("Database schema version {} is not supported. Please upgrade Prodlog.", version)
-                );
             }
             (None, false) => {
                 // Initialize the database schema
@@ -96,7 +113,11 @@ impl SqliteSink {
                         message TEXT,
                         is_noop BOOLEAN,
                         exit_code INTEGER,
+                        local_user TEXT,
+                        remote_user TEXT,
                         filename TEXT,
+                        terminal_rows INTEGER,
+                        terminal_cols INTEGER,
                         output BLOB,
                         original_content BLOB,
                         edited_content BLOB
@@ -128,14 +149,14 @@ impl SqliteSink {
 }
 
 impl Sink for SqliteSink {
-    fn add_entry(&mut self, capture: &CaptureV2_3) -> Result<(), std::io::Error> {
+    fn add_entry(&mut self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
         let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         conn
             .execute(
-                "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, message, is_noop, exit_code, filename, output, original_content, edited_content)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, message, is_noop, exit_code, local_user, remote_user, filename, terminal_rows, terminal_cols, output, original_content, edited_content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![
                     if capture.capture_type == CaptureType::Run {
                         "run"
@@ -152,7 +173,11 @@ impl Sink for SqliteSink {
                     capture.message,
                     capture.is_noop,
                     capture.exit_code,
+                    capture.local_user,
+                    capture.remote_user,
                     capture.filename,
+                    capture.terminal_rows,
+                    capture.terminal_cols,
                     &capture.captured_output,
                     capture.original_content,
                     capture.edited_content
@@ -163,13 +188,13 @@ impl Sink for SqliteSink {
     }
 }
 
-fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_3> {
+fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
     let capture_type: String = row.get("capture_type")?;
     let uuid_str: String = row.get("uuid")?;
     let uuid = Uuid::parse_str(&uuid_str).map_err(|e|
         rusqlite::Error::InvalidParameterName(e.to_string())
     )?;
-    Ok(CaptureV2_3 {
+    Ok(CaptureV2_4 {
         capture_type: if capture_type == "run" {
             CaptureType::Run
         } else {
@@ -184,7 +209,11 @@ fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_3> {
         message: row.get("message")?,
         is_noop: row.get("is_noop")?,
         exit_code: row.get("exit_code")?,
+        local_user: row.get("local_user")?,
+        remote_user: row.get("remote_user")?,
         filename: row.get("filename")?,
+        terminal_rows: row.get("terminal_rows")?,
+        terminal_cols: row.get("terminal_cols")?,
         captured_output: row.get("output")?,
         original_content: row.get("original_content")?,
         edited_content: row.get("edited_content")?,
@@ -192,7 +221,7 @@ fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_3> {
 }
 
 impl UiSource for SqliteSink {
-    fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_3>, std::io::Error> {
+    fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_4>, std::io::Error> {
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         let mut query = String::from("SELECT * FROM prodlog_entries WHERE 1=1");
@@ -256,7 +285,7 @@ impl UiSource for SqliteSink {
         Ok(entries)
     }
 
-    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_3>, std::io::Error> {
+    fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_4>, std::io::Error> {
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let uuid_str = uuid.to_string();
         match

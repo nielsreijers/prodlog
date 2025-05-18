@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write, path::PathBuf};
 use chrono::Duration;
 use crate::sinks::get_short_command;
-use crate::model::CaptureV2_3;
+use crate::model::CaptureV2_4;
 use super::{get_formatted_time_long, get_formatted_time_short, Sink};
 
 pub struct ObsidianSink {
@@ -15,14 +15,14 @@ impl ObsidianSink {
     }
 }
 
-fn get_output_log_filename (capture: &CaptureV2_3) -> String {
+fn get_output_log_filename (capture: &CaptureV2_4) -> String {
     let formatted_time = capture.start_time.format("%Y%m%d_%H%M%S").to_string();
     let short_cmd = get_short_command(&capture.cmd).replace(" ", "_");
     format!("prodlog_output/{}/{}-{}.md", capture.host, formatted_time, short_cmd)
 }
 
 impl Sink for ObsidianSink {
-    fn add_entry(&mut self, capture: &CaptureV2_3) -> Result<(), std::io::Error> {
+    fn add_entry(&mut self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
         std::fs::create_dir_all(self.prodlog_dir.join(format!("prodlog_output/{}", capture.host)))?;
         let output_filename = get_output_log_filename(capture);
         let mut log_by_host = File::create(self.prodlog_dir.join(output_filename.clone()))?;

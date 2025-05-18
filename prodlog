@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PRODLOG_VERSION="2.3.0"
+PRODLOG_VERSION="2.4.0"
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
@@ -135,6 +135,7 @@ fi
 # Get metadata
 hostname=$(hostname)
 cwd=$(pwd)
+username=$(whoami)
 
 # Send start marker depending on mode
 if [[ "$mode" == "run" ]]; then
@@ -143,7 +144,7 @@ if [[ "$mode" == "run" ]]; then
     else
         cmd="$*"
     fi
-    send_command "$CMD_START_CAPTURE_RUN" "$hostname" "$cwd" "$cmd" "$message"
+    send_command "$CMD_START_CAPTURE_RUN" "$hostname" "$cwd" "$cmd" "$message" "$username"
     on_exit() {
         exit_status=$?
         send_command "$CMD_STOP_CAPTURE_RUN" "$exit_status"
@@ -163,7 +164,7 @@ elif [[ "$mode" == "edit" ]]; then
     else
         cmd="${EDITOR:-vi} $filename_fullpath"
     fi
-    send_command "$CMD_START_CAPTURE_EDIT" "$hostname" "$cwd" "$cmd" "$message" "$filename_fullpath" "$original_file_b64"
+    send_command "$CMD_START_CAPTURE_EDIT" "$hostname" "$cwd" "$cmd" "$message" "$username" "$filename_fullpath" "$original_file_b64"
 
     on_exit() {
         exit_status=$?

@@ -1,6 +1,6 @@
 use axum::{ response::Html, extract::{ State, Query } };
 use urlencoding;
-use crate::{ model::CaptureV2_3, sinks::Filters };
+use crate::{ model::CaptureV2_4, sinks::Filters };
 use resources::{
     CAPTURE_TYPE_EDIT_SVG,
     CAPTURE_TYPE_RUN_SVG,
@@ -103,7 +103,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 "#)
 }
 
-fn generate_entry(entry: &CaptureV2_3, filters: &Filters, preview: &Option<String>) -> String {
+fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<String>) -> String {
     let row_class = if entry.is_noop {
         " class=\"noop-row\""
     } else {
@@ -212,7 +212,7 @@ pub async fn handle_index(
         }
     };
 
-    let mut entries: Vec<(CaptureV2_3, Option<String>)> = if
+    let mut entries: Vec<(CaptureV2_4, Option<String>)> = if
         let Some(output_filter) = &filters.output
     {
         data.into_iter()
