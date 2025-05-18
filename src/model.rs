@@ -26,9 +26,9 @@ pub struct CaptureV2_3 {
     pub message: String,
     pub is_noop: bool,
     pub exit_code: i32,
+    pub filename: String,
     #[serde_as(as = "Base64")]
     pub captured_output: Vec<u8>,
-    pub filename: String,
     #[serde_as(as = "Base64")]
     pub original_content: Vec<u8>,
     #[serde_as(as = "Base64")]
