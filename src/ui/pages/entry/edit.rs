@@ -4,7 +4,7 @@ use crate::ui::pages::entry::common::generate_detail_page;
 pub async fn handle_edit() -> Html<String> {
     let content = format!(r#"
         <form id="editForm">
-            <div class="form-group">
+            <div>
                 <label for="message">Message:</label>
                 <textarea name="message" id="edit-message" rows="10">Loading...</textarea>
             </div>
@@ -16,8 +16,8 @@ pub async fn handle_edit() -> Html<String> {
                 <span class="switch-label">Mark as no-op (this command had no effect)</span>
             </div>
             <div class="button-group">
-                <button type="submit">Save</button>
-                <a href="/" class="button">Cancel</a>
+                <button type="submit" class="bluebutton">Save</button>
+                <a href="/" class="greybutton">Cancel</a>
             </div>
         </form>
         <script>

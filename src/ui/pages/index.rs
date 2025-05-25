@@ -21,13 +21,13 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 <html>
 <head>
     <title>Prodlog Viewer</title>
-    <link rel="stylesheet" href="/static/index.css">
+    <link rel="stylesheet" href="/static/prodlog.css">
 </head>
 <body>
     <div class="container" id="container">
         <div class="header">
             <h1>Prodlog Viewer</h1>
-            <button class="view-toggle" onclick="toggleWidth()" title="Toggle width">
+            <button class="bluebutton" type="button" onclick="toggleWidth()" title="Toggle width">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M4 4h16M4 20h16M4 12h16"/>
                 </svg>
@@ -40,15 +40,13 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <input type="text" name="host" placeholder="Hostname" value="{host_filter}">
                 <input type="text" name="command" placeholder="Command" value="{command_filter}">
                 <input type="text" name="output" placeholder="Search in output" value="{output_filter}">
-                <div class="switch-container">
                     <label class="switch">
                         <input type="checkbox" name="show_noop" value="true" {noop_filter}>
                         <span class="slider"></span>
                     </label>
                     <span class="switch-label">Reveal no-op entries</span>
-                </div>
-                <button type="submit">Filter</button>
-                <button type="button" onclick="window.location.href='/'">Clear</button>
+                <button class="bluebutton" type="submit">Filter</button>
+                <button class="greybutton" type="button" onclick="window.location.href='/'">Clear</button>
             </form>
         </div>
         <table>
@@ -163,8 +161,8 @@ fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<Strin
         format!(
             r#"<tr class="message-row">
                 <td colspan="2"></td>
-                <td colspan="6" class="message">
-                    <div class="message-content">
+                <td colspan="6" class="message-row">
+                    <div>
                         <span>{}</span>
                     </div>
                 </td>
@@ -184,10 +182,10 @@ fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<Strin
                 <td>{cmd}</td>
                 <td>
                     <div class="button-group">
-                        <button class="copy-button" onclick="copyButton(this, '{copy_text}')" title="Copy">
+                        <button class="edit-or-copy-button" onclick="copyButton(this, '{copy_text}')" title="Copy">
                             {COPY_ICON_SVG}
                         </button>
-                        <a href="edit/{uuid}" class="copy-button" title="Edit command">
+                        <a href="edit/{uuid}" class="edit-or-copy-button" title="Edit command">
                             {EDIT_ICON_SVG}
                         </a>
                     </div>

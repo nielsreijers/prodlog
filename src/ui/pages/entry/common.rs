@@ -4,13 +4,13 @@ pub fn generate_detail_page(title: &str, content: &str) -> String {
 <html>
 <head>
     <title>{title}</title>
-    <link rel="stylesheet" href="/static/entry.css">
+    <link rel="stylesheet" href="/static/prodlog.css">
     <script src="/static/prodlog.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="back-link">
-            <a href="/">← Back to list</a>
+        <div>
+            <button class="bluebutton" type="button" onclick="window.location.href='/'">← Back to list</button>
         </div>
         <script>
         window.prodlog.get_prodlog_entry()

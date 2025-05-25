@@ -5,7 +5,7 @@ pub async fn handle_diff(
 ) -> Html<String> {
     let content = format!(r#"
         <div class="content-box">
-            <pre class="command-output" id="diff-content"></pre>
+            <pre class="diff-output" id="diff-content"></pre>
         </div>
         <script>
             // Fetch the entry data first
