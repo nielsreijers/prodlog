@@ -42,11 +42,6 @@ pub struct ProdlogDataV2_4 {
     pub prodlog_version: String,
     pub entries: Vec<CaptureV2_4>,
 }
-impl CaptureV2_4 {
-    pub fn output_as_string(&self) -> String {
-        String::from_utf8(self.captured_output.clone()).unwrap()
-    }
-}
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone)]

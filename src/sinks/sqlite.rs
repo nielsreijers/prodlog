@@ -245,11 +245,6 @@ impl UiSource for SqliteSink {
             params.push(Box::new(format!("%{}%", command)));
         }
 
-        if let Some(output) = &filters.output {
-            query.push_str(" AND output LIKE ?");
-            params.push(Box::new(format!("%{}%", output)));
-        }
-
         if let Some(true) = &filters.show_noop {
             // Don't filter out no-op entries
         } else {
@@ -269,21 +264,6 @@ impl UiSource for SqliteSink {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
-        // If there's an output filter, we need to filter in Rust since we can't easily search in BLOB
-        if let Some(output_filter) = &filters.output {
-            if !output_filter.is_empty() {
-                return Ok(
-                    entries
-                        .into_iter()
-                        .filter(|entry| {
-                            let output = entry.output_as_string();
-                            output.to_lowercase().contains(&output_filter.to_lowercase())
-                        })
-                        .collect()
-                );
-            }
-        }
 
         Ok(entries)
     }

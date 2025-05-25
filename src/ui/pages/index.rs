@@ -1,5 +1,4 @@
 use axum::{ response::Html, extract::{ State, Query } };
-use urlencoding;
 use crate::{ model::CaptureV2_4, sinks::Filters };
 use resources::{
     CAPTURE_TYPE_EDIT_SVG,
@@ -7,13 +6,12 @@ use resources::{
     COPY_ICON_SVG,
     EDIT_ICON_SVG,
 };
-use crate::ui::{ resources, ProdlogUiState, highlight_matches, format_timestamp };
+use crate::ui::{ resources, ProdlogUiState, format_timestamp };
 
 fn generate_index(table_rows: &str, filters: &Filters) -> String {
     let date_filter = filters.date.as_deref().unwrap_or("");
     let host_filter = filters.host.as_deref().unwrap_or("");
     let command_filter = filters.command.as_deref().unwrap_or("");
-    let output_filter = filters.output.as_deref().unwrap_or("");
     let noop_filter = if filters.show_noop.unwrap_or(false) { "checked" } else { "" };
     format!(
         r#"
@@ -39,7 +37,6 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <input type="date" name="date" value="{date_filter}">
                 <input type="text" name="host" placeholder="Hostname" value="{host_filter}">
                 <input type="text" name="command" placeholder="Command" value="{command_filter}">
-                <input type="text" name="output" placeholder="Search in output" value="{output_filter}">
                     <label class="switch">
                         <input type="checkbox" name="show_noop" value="true" {noop_filter}>
                         <span class="slider"></span>
@@ -101,7 +98,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 "#)
 }
 
-fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<String>) -> String {
+fn generate_entry(entry: &CaptureV2_4) -> String {
     let row_class = if entry.is_noop {
         " class=\"noop-row\""
     } else {
@@ -126,36 +123,10 @@ fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<Strin
     let exit_code = entry.exit_code;
     let uuid = entry.uuid.to_string();
     let link = match entry.capture_type {
-        crate::model::CaptureType::Run => {
-            let url = if let Some(output_filter) = &filters.output {
-                if !output_filter.is_empty() {
-                    format!(
-                        r#"output/{}?output={}"#,
-                        entry.uuid,
-                        urlencoding::encode(output_filter)
-                    )
-                } else {
-                    format!(r#"output/{}"#, entry.uuid)
-                }
-            } else {
-                format!(r#"output/{}"#, entry.uuid)
-            };
-            format!(r#"<a href="{}">View</a>"#, url)
-        }
+        crate::model::CaptureType::Run =>
+            format!(r#"<a href="output/{}">View</a>"#, entry.uuid),
         crate::model::CaptureType::Edit =>
             format!(r#"<a href="diff/{}">Diff</a>"#, entry.uuid),
-    };
-    let preview_html = if let Some(preview) = preview {
-        if let Some(output_filter) = &filters.output {
-            format!(
-                r#"<div class="output-preview">{}</div>"#,
-                highlight_matches(preview, output_filter)
-            )
-        } else {
-            String::new()
-        }
-    } else {
-        String::new()
     };
     let message_row = if !entry.message.is_empty() {
         format!(
@@ -192,7 +163,7 @@ fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<Strin
                 </td>
                 <td>{duration}ms</td>
                 <td>{exit_code}</td>
-                <td>{link}{preview_html}</td>
+                <td>{link}</td>
             </tr>
             {message_row}
         </tbody>"#
@@ -203,44 +174,20 @@ pub async fn handle_index(
     State(sink): State<ProdlogUiState>,
     Query(filters): Query<Filters>
 ) -> Html<String> {
-    let data = match sink.read().await.get_entries(&filters) {
+    let mut entries = match sink.read().await.get_entries(&filters) {
         Ok(data) => data,
         Err(err) => {
             return Html(String::from(format!("Error loading log data: {}", err)));
         }
     };
 
-    let mut entries: Vec<(CaptureV2_4, Option<String>)> = if
-        let Some(output_filter) = &filters.output
-    {
-        data.into_iter()
-            .map(|entry| {
-                let output_content = entry.output_as_string();
-                let idx = output_content
-                    .to_lowercase()
-                    .find(&output_filter.to_lowercase())
-                    .unwrap();
-                let start = idx.saturating_sub(50);
-                let end = (idx + output_filter.len() + 50).min(output_content.len());
-                let preview = output_content[start..end].to_string();
-                (entry, Some(preview))
-            })
-            .collect()
-    } else {
-        data.into_iter()
-            .map(|entry| (entry, None))
-            .collect()
-    };
-
-    entries.sort_by_key(|entry| entry.0.start_time);
+    entries.sort_by_key(|entry| entry.start_time);
     entries.reverse();
 
     // Generate table rows
     let rows = entries
         .iter()
-        .map(|(entry, preview)| {
-            generate_entry(entry, &filters, preview)
-        })
+        .map(|entry| generate_entry(entry))
         .collect::<Vec<_>>()
         .join("\n");
 

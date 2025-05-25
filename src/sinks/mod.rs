@@ -17,7 +17,6 @@ pub struct Filters {
     pub date: Option<String>,
     pub host: Option<String>,
     pub command: Option<String>,
-    pub output: Option<String>,
     pub show_noop: Option<bool>,
 }
 

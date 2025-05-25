@@ -15,13 +15,6 @@ fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
     timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()
 }
 
-fn highlight_matches(text: &str, search_term: &str) -> String {
-    if search_term.is_empty() {
-        return text.to_string();
-    }
-    text.replace(search_term, &format!("<span class=\"match-highlight\">{}</span>", search_term))
-}
-
 pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
         .route("/", get(pages::index::handle_index))

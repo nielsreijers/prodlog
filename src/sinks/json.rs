@@ -95,16 +95,6 @@ impl UiSource for JsonSink {
                     continue;
                 }
             }
-
-            // Check output content if output filter is present
-            if let Some(output_filter) = &filters.output {
-                if !output_filter.is_empty() {
-                    let output_content = entry.output_as_string();
-                    if !output_content.to_lowercase().contains(&output_filter.to_lowercase()) {
-                        continue;
-                    }
-                }
-            }
             
             filtered_entries.push(entry);
         }

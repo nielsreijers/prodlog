@@ -319,23 +319,3 @@ input:focus, select:focus {
     border-color: var(--proton-blue);
     box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
 }
-
-/***** highlight styles: will be removed later. *****/
-.match-highlight { 
-    background-color: rgba(109, 74, 255, 0.1);
-    color: var(--proton-blue);
-    padding: 0.125rem 0.25rem;
-    border-radius: 4px;
-}
-.output-preview {
-    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-    margin-top: 0.5rem;
-    padding: 0.75rem;
-    background-color: var(--proton-hover);
-    border: 1px solid var(--proton-border);
-    border-radius: 8px;
-    white-space: pre-wrap;
-    max-height: 100px;
-    overflow-y: auto;
-    font-size: 0.875rem;
-}
