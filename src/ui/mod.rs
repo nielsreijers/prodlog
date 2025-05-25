@@ -1,14 +1,12 @@
-use axum::{ routing::get, Router };
+use axum::{ routing::{get, post}, Router };
 use chrono::{ DateTime, Utc };
 use tokio::sync::RwLock;
 use std::sync::Arc;
 use crate::sinks::UiSource;
 
-mod ansi_to_html;
-mod entry;
-mod index;
 mod resources;
-mod save;
+mod rest;
+mod pages;
 mod static_files;
 
 type ProdlogUiState = Arc<RwLock<Box<dyn UiSource>>>;
@@ -26,11 +24,13 @@ fn highlight_matches(text: &str, search_term: &str) -> String {
 
 pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
-        .route("/", get(index::handle_index))
-        .route("/output/:uuid", get(entry::handle_output))
-        .route("/diff/:uuid", get(entry::handle_diff))
-        .route("/edit/:uuid", get(entry::handle_edit))
-        .route("/save", axum::routing::post(save::handle_save))
+        .route("/", get(pages::index::handle_index))
+        .route("/output/:uuid", get(pages::entry::output::handle_output))
+        .route("/diff/:uuid", get(pages::entry::diff::handle_diff))
+        .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
+        .route("/edit/:uuid", get(pages::entry::edit::handle_edit))
+        .route("/entry/:uuid", get(rest::handle_entry_get))
+        .route("/entry", post(rest::handle_entry_post))
         .route("/static/*path", get(static_files::serve_file))
         .with_state(sink);
 

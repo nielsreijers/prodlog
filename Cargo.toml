@@ -15,7 +15,6 @@ name = "prodlog_record"
 path = "src/main.rs"
 
 [dependencies]
-askama = "0.12"
 axum = "0.7"
 base64 = "0.22.1"
 chrono = { version = "0.4.40", features = ["serde"] }

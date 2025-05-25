@@ -7,7 +7,7 @@ use resources::{
     COPY_ICON_SVG,
     EDIT_ICON_SVG,
 };
-use super::{ resources, ProdlogUiState };
+use crate::ui::{ resources, ProdlogUiState, highlight_matches, format_timestamp };
 
 fn generate_index(table_rows: &str, filters: &Filters) -> String {
     let date_filter = filters.date.as_deref().unwrap_or("");
@@ -113,7 +113,7 @@ fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<Strin
         crate::model::CaptureType::Run => CAPTURE_TYPE_RUN_SVG,
         crate::model::CaptureType::Edit => CAPTURE_TYPE_EDIT_SVG,
     };
-    let start_time = super::format_timestamp(&entry.start_time);
+    let start_time = format_timestamp(&entry.start_time);
     let host = entry.host.clone();
     let cmd = entry.cmd.clone();
     let copy_text = match entry.capture_type {
@@ -151,7 +151,7 @@ fn generate_entry(entry: &CaptureV2_4, filters: &Filters, preview: &Option<Strin
         if let Some(output_filter) = &filters.output {
             format!(
                 r#"<div class="output-preview">{}</div>"#,
-                super::highlight_matches(preview, output_filter)
+                highlight_matches(preview, output_filter)
             )
         } else {
             String::new()
