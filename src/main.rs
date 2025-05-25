@@ -327,10 +327,10 @@ impl StdoutHandler {
                                 }
                                 CMD_ARE_YOU_RUNNING => {
                                     if let Some(version) = args.get(0) {
-                                        if *version != env!("CARGO_PKG_VERSION") {
+                                        if !helpers::compare_major_minor_versions(version, env!("CARGO_PKG_VERSION")) {
                                             print_prodlog_message(
                                                 &format!(
-                                                    "Error: Unsupported version: {} (expected {})",
+                                                    "Error: Unsupported version: {} (expected major.minor to match {})",
                                                     version,
                                                     env!("CARGO_PKG_VERSION")
                                                 )

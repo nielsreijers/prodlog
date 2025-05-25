@@ -19,3 +19,14 @@ pub fn base64_decode(data: &str) -> Vec<u8> {
         }
     }
 }
+
+pub fn compare_major_minor_versions(version1: &str, version2: &str) -> bool {
+    let v1_parts: Vec<&str> = version1.split('.').collect();
+    let v2_parts: Vec<&str> = version2.split('.').collect();
+    
+    if v1_parts.len() < 2 || v2_parts.len() < 2 {
+        return false;
+    }
+    
+    v1_parts[0] == v2_parts[0] && v1_parts[1] == v2_parts[1]
+}

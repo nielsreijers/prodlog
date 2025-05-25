@@ -6,7 +6,7 @@ use rusqlite::OptionalExtension;
 use std::sync::Arc;
 use uuid::Uuid;
 use std::path::PathBuf;
-use crate::{ model::*, print_prodlog_message, print_prodlog_warning, prodlog_panic };
+use crate::{ helpers::compare_major_minor_versions, model::*, print_prodlog_message, print_prodlog_warning, prodlog_panic };
 use super::{ Sink, UiSource };
 use r2d2_sqlite::SqliteConnectionManager;
 
@@ -32,6 +32,9 @@ fn migrate_up_one(
             conn.execute("ALTER TABLE prodlog_entries ADD COLUMN terminal_rows INT DEFAULT 0", [])?;
             conn.execute("ALTER TABLE prodlog_entries ADD COLUMN terminal_cols INT DEFAULT 0", [])?;
             Ok("2.4.0".to_string())
+        }
+        "2.4.0" => {
+            Ok("2.5".to_string())
         }
         _ => {
             prodlog_panic(
@@ -84,7 +87,7 @@ impl SqliteSink {
 
         let current_version = env!("CARGO_PKG_VERSION").to_string();
         match self.get_schema_version()? {
-            (Some(version), false) if version == current_version => {
+            (Some(version), false) if compare_major_minor_versions(&version, &current_version) => {
                 print_prodlog_message("Database is up to date.");
             }
             (Some(version), false) => {
