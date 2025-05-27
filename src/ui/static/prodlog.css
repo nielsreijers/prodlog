@@ -17,14 +17,10 @@ body {
     color: var(--proton-text);
 }
 .container {
-    max-width: 1200px;
+    max-width: none;
     margin: 0 auto;
     padding: 2rem;
     transition: max-width 0.3s ease;
-}
-.container.full-width {
-    max-width: none;
-    padding: 2rem;
 }
 
 /* Button styles */

@@ -4,7 +4,7 @@ use crate::ui::pages::entry::common::generate_detail_page;
 pub async fn handle_diff(
 ) -> Html<String> {
     let content = format!(r#"
-        <div class="content-box">
+        <div>
             <pre class="diff-output" id="diff-content"></pre>
         </div>
         <script>

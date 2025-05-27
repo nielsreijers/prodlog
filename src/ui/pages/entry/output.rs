@@ -37,7 +37,7 @@ pub async fn handle_output(
         "
         <link rel=\"stylesheet\" href=\"/static/xterm.css\" />
         <script src=\"/static/xterm.js\"></script>
-        <div id=\"terminal\" class=\"content-box\"/>
+        <div id=\"terminal\"/>
         <script>
             {script}
         </script>

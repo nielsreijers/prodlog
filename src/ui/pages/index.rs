@@ -25,12 +25,6 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
     <div class="container" id="container">
         <div class="header">
             <h1>Prodlog Viewer</h1>
-            <button class="bluebutton" type="button" onclick="toggleWidth()" title="Toggle width">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 4h16M4 20h16M4 12h16"/>
-                </svg>
-                <span class="toggle-text">Full Width</span>
-            </button>
         </div>
         <div class="filters">
             <form method="get">
@@ -65,14 +59,6 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
         </table>
     </div>
     <script>
-        function toggleWidth() {{
-            const container = document.getElementById('container');
-            const toggleText = document.querySelector('.toggle-text');
-            container.classList.toggle('full-width');
-            toggleText.textContent = container.classList.contains('full-width') ? 'Column Width' : 'Full Width';
-            localStorage.setItem('fullWidth', container.classList.contains('full-width'));
-        }}
-        
         function copyButton(button, text) {{
             navigator.clipboard.writeText(text).then(() => {{
                 button.classList.add('copied');
@@ -83,15 +69,6 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 }}, 2000);
             }});
         }}
-
-        document.addEventListener('DOMContentLoaded', () => {{
-            const container = document.getElementById('container');
-            const toggleText = document.querySelector('.toggle-text');
-            if (localStorage.getItem('fullWidth') === 'true') {{
-                container.classList.add('full-width');
-                toggleText.textContent = 'Column Width';
-            }}
-        }});
     </script>
 </body>
 </html>
