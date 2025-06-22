@@ -79,7 +79,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <tr>
                     <th style="width: 24px;"></th>
                     <th style="width: 190px;">Time</th>
-                    <th style="width: 120px;">Host</th>
+                    <th style="width: 160px;">Host</th>
                     <th style="width: auto; white-space: normal;">Command</th>
                     <th style="width: 48px;"></th>
                     <th style="width: 80px;">Duration</th>
