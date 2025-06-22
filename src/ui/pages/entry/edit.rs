@@ -1,5 +1,5 @@
-use axum::response::Html;
-use crate::ui::pages::entry::common::generate_detail_page;
+use axum::{extract::{Path, State}, response::Html};
+use crate::{model::CaptureType, ui::{pages::entry::common::generate_detail_page, rest::get_entry, ProdlogUiState}};
 
 pub const EDIT_CONTENT: &str = r#"
     <div class="section">
@@ -56,6 +56,23 @@ pub const EDIT_CONTENT: &str = r#"
     </script>
     "#;
 
-pub async fn handle_edit() -> Html<String> {
-    Html(generate_detail_page("Edit Entry", EDIT_CONTENT))
+pub async fn handle_edit(
+    State(sink): State<ProdlogUiState>,
+    Path(uuid): Path<String>,
+) -> Html<String> {
+    let entry = match get_entry(sink.clone(), &uuid).await {
+        Ok(entry) => entry,
+        Err((_, message)) => return Html(message),
+    };
+
+    let content = match entry.capture_type {
+        CaptureType::Run => {
+            EDIT_CONTENT.to_owned() + crate::ui::pages::entry::output::OUTPUT_CONTENT
+        }
+        CaptureType::Edit => {
+            EDIT_CONTENT.to_owned() + crate::ui::pages::entry::diff::DIFF_CONTENT
+        }
+    };
+
+    Html(generate_detail_page("Edit Entry", &content))
 }
