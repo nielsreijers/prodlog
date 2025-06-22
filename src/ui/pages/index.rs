@@ -1,4 +1,4 @@
-use axum::{ response::Html, extract::{ State, Query } };
+use axum::{ response::Html, extract::{ State, Query }, http::HeaderMap };
 use crate::{ model::CaptureV2_4, sinks::Filters };
 use resources::{
     CAPTURE_TYPE_EDIT_SVG,
@@ -7,6 +7,39 @@ use resources::{
     EDIT_ICON_SVG,
 };
 use crate::ui::{ resources, ProdlogUiState, format_timestamp };
+
+fn parse_cookies(headers: &HeaderMap) -> Filters {
+    let mut filters = Filters::default();
+    
+    if let Some(cookie_header) = headers.get("cookie") {
+        if let Ok(cookie_str) = cookie_header.to_str() {
+            for cookie in cookie_str.split(';') {
+                let parts: Vec<&str> = cookie.trim().split('=').collect();
+                if parts.len() == 2 {
+                    let (key, value) = (parts[0], parts[1]);
+                    match key {
+                        "prodlog_date" => filters.date = Some(value.to_string()),
+                        "prodlog_host" => filters.host = Some(value.to_string()),
+                        "prodlog_search" => filters.search = Some(value.to_string()),
+                        "prodlog_show_noop" => filters.show_noop = Some(value == "true"),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    
+    filters
+}
+
+fn merge_filters(url_filters: &Filters, cookie_filters: &Filters) -> Filters {
+    Filters {
+        date: url_filters.date.clone().or(cookie_filters.date.clone()),
+        host: url_filters.host.clone().or(cookie_filters.host.clone()),
+        search: url_filters.search.clone().or(cookie_filters.search.clone()),
+        show_noop: url_filters.show_noop.or(cookie_filters.show_noop),
+    }
+}
 
 fn generate_index(table_rows: &str, filters: &Filters) -> String {
     let date_filter = filters.date.as_deref().unwrap_or("");
@@ -28,17 +61,17 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
             <h1>Prodlog Viewer</h1>
         </div>
         <div class="filters">
-            <form method="get">
-                <input type="date" name="date" value="{date_filter}">
-                <input type="text" name="host" placeholder="Hostname" value="{host_filter}">
-                <input type="text" name="search" placeholder="Command or message" value="{search_filter}">
+            <form method="get" id="filterForm">
+                <input type="date" name="date" id="dateFilter" value="{date_filter}">
+                <input type="text" name="host" id="hostFilter" placeholder="Hostname" value="{host_filter}">
+                <input type="text" name="search" id="searchFilter" placeholder="Command or message" value="{search_filter}">
                     <label class="switch">
-                        <input type="checkbox" name="show_noop" value="true" {noop_filter}>
+                        <input type="checkbox" name="show_noop" id="noopFilter" value="true" {noop_filter}>
                         <span class="slider"></span>
                     </label>
                     <span class="switch-label">Reveal no-op entries</span>
                 <button class="bluebutton" type="submit">Filter</button>
-                <button class="greybutton" type="button" onclick="window.location.href='/'">Clear</button>
+                <button class="greybutton" type="button" onclick="clearFilters()">Clear</button>
             </form>
         </div>
         <table>
@@ -60,6 +93,89 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
         </table>
     </div>
     <script>
+        // Load saved filters from cookies on page load
+        document.addEventListener('DOMContentLoaded', function() {{
+            loadFilters();
+        }});
+
+        // Save filters to cookies when form is submitted
+        document.getElementById('filterForm').addEventListener('submit', function() {{
+            saveFilters();
+        }});
+
+        function saveFilters() {{
+            const filters = {{
+                date: document.getElementById('dateFilter').value,
+                host: document.getElementById('hostFilter').value,
+                search: document.getElementById('searchFilter').value,
+                show_noop: document.getElementById('noopFilter').checked
+            }};
+            
+            // Set cookies for each filter
+            if (filters.date) {{
+                document.cookie = `prodlog_date=${{encodeURIComponent(filters.date)}}; path=/; max-age=86400`;
+            }} else {{
+                document.cookie = 'prodlog_date=; path=/; max-age=0';
+            }}
+            
+            if (filters.host) {{
+                document.cookie = `prodlog_host=${{encodeURIComponent(filters.host)}}; path=/; max-age=86400`;
+            }} else {{
+                document.cookie = 'prodlog_host=; path=/; max-age=0';
+            }}
+            
+            if (filters.search) {{
+                document.cookie = `prodlog_search=${{encodeURIComponent(filters.search)}}; path=/; max-age=86400`;
+            }} else {{
+                document.cookie = 'prodlog_search=; path=/; max-age=0';
+            }}
+            
+            if (filters.show_noop) {{
+                document.cookie = 'prodlog_show_noop=true; path=/; max-age=86400';
+            }} else {{
+                document.cookie = 'prodlog_show_noop=; path=/; max-age=0';
+            }}
+        }}
+
+        function loadFilters() {{
+            // Check if we have URL parameters first (they take precedence)
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.toString()) {{
+                return; // URL parameters exist, don't load from cookies
+            }}
+            
+            // Load from cookies
+            const cookies = document.cookie.split(';').reduce((acc, cookie) => {{
+                const [key, value] = cookie.trim().split('=');
+                if (key && value) {{
+                    acc[key] = decodeURIComponent(value);
+                }}
+                return acc;
+            }}, {{}});
+            
+            if (cookies.prodlog_date) document.getElementById('dateFilter').value = cookies.prodlog_date;
+            if (cookies.prodlog_host) document.getElementById('hostFilter').value = cookies.prodlog_host;
+            if (cookies.prodlog_search) document.getElementById('searchFilter').value = cookies.prodlog_search;
+            if (cookies.prodlog_show_noop === 'true') document.getElementById('noopFilter').checked = true;
+        }}
+
+        function clearFilters() {{
+            // Clear form fields
+            document.getElementById('dateFilter').value = '';
+            document.getElementById('hostFilter').value = '';
+            document.getElementById('searchFilter').value = '';
+            document.getElementById('noopFilter').checked = false;
+            
+            // Clear cookies
+            document.cookie = 'prodlog_date=; path=/; max-age=0';
+            document.cookie = 'prodlog_host=; path=/; max-age=0';
+            document.cookie = 'prodlog_search=; path=/; max-age=0';
+            document.cookie = 'prodlog_show_noop=; path=/; max-age=0';
+            
+            // Submit the form to refresh the page
+            document.getElementById('filterForm').submit();
+        }}
+
         function copyButton(button, text) {{
             navigator.clipboard.writeText(text).then(() => {{
                 button.classList.add('copied');
@@ -150,8 +266,13 @@ fn generate_entry(entry: &CaptureV2_4) -> String {
 
 pub async fn handle_index(
     State(sink): State<ProdlogUiState>,
-    Query(filters): Query<Filters>
+    Query(url_filters): Query<Filters>,
+    headers: HeaderMap,
 ) -> Html<String> {
+    // Parse cookies and merge with URL parameters
+    let cookie_filters = parse_cookies(&headers);
+    let filters = merge_filters(&url_filters, &cookie_filters);
+
     let mut entries = match sink.read().await.get_entries(&filters) {
         Ok(data) => data,
         Err(err) => {
