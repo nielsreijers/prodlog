@@ -10,8 +10,8 @@ pub const OUTPUT_CONTENT: &str = r#"
             .then(entry => {
                 // Create terminal with the correct dimensions
                 const term = new Terminal({
-                    cols: entry.terminal_cols,
-                    rows: entry.terminal_rows,
+                    cols: entry.terminal_cols || 120,
+                    rows: entry.terminal_rows || 40,
                     cursorBlink: true,
                     scrollback: 1000,
                     fontSize: 14,
