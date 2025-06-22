@@ -1,12 +1,13 @@
 use axum::response::Html;
 use crate::ui::pages::entry::common::generate_detail_page;
 
-pub async fn handle_edit() -> Html<String> {
-    let content = format!(r#"
+pub const EDIT_CONTENT: &str = r#"
+    <div class="section">
+        <h2 id="header-title">Edit entry</h2>
         <form id="editForm">
             <div>
                 <label for="message">Message:</label>
-                <textarea name="message" id="edit-message" rows="10">Loading...</textarea>
+                <textarea name="message" id="edit-message" rows="5">Loading...</textarea>
             </div>
             <div class="switch-container">
                 <label class="switch">
@@ -20,38 +21,41 @@ pub async fn handle_edit() -> Html<String> {
                 <a href="/" class="greybutton">Cancel</a>
             </div>
         </form>
-        <script>
-            window.prodlog.get_prodlog_entry()
-                .then(entry => {{
+    </div>
+    <script>
+        window.prodlog.get_prodlog_entry()
+                .then(entry => {
                     document.getElementById("edit-message").textContent = entry.message;
                     document.getElementById("edit-is-noop").checked = entry.is_noop;
-                    document.getElementById('editForm').addEventListener('submit', async (e) => {{
+                    document.getElementById('editForm').addEventListener('submit', async (e) => {
                         e.preventDefault();
                         const form = e.target;
-                        const data = {{
+                        const data = {
                             uuid: entry.uuid,
                             message: form.message.value,
                             is_noop: form.is_noop.checked
-                        }};
-                        try {{
-                            const response = await fetch('/entry', {{
+                        };
+                        try {
+                            const response = await fetch('/entry', {
                                 method: 'POST',
-                                headers: {{
+                                headers: {
                                     'Content-Type': 'application/json',
-                                }},
+                                },
                                 body: JSON.stringify(data)
-                            }});
-                            if (response.ok) {{
+                            });
+                            if (response.ok) {
                                 window.location.href = '/';
-                            }} else {{
+                            } else {
                                 alert('Failed to save changes');
-                            }}
-                        }} catch (error) {{
+                            }
+                        } catch (error) {
                             alert('Error saving changes: ' + error);
-                        }}
-                    }});
-                }});
-        </script>
-    "#);
-    Html(generate_detail_page("Edit Entry", &content))
+                        }
+                    });
+                });
+    </script>
+    "#;
+
+pub async fn handle_edit() -> Html<String> {
+    Html(generate_detail_page("Edit Entry", EDIT_CONTENT))
 }

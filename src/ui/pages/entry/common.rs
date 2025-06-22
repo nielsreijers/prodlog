@@ -34,7 +34,7 @@ pub fn generate_detail_page(title: &str, content: &str) -> String {
                     const messageDiv = document.createElement('div');
                     messageDiv.className = 'message';
                     messageDiv.textContent = entry.message;
-                    document.querySelector('.header-info').appendChild(messageDiv);
+                    document.getElementById('header-info').appendChild(messageDiv);
                 }}
 
                 if (entry.capture_type == "Run") {{
@@ -44,7 +44,7 @@ pub fn generate_detail_page(title: &str, content: &str) -> String {
                 }}
             }});
         </script>
-        <div class="header-info">
+        <div class="section" id="header-info">
             <h2 id="header-title">Loading...</h2>
             <div class="info-grid">
                 <div class="info-item">

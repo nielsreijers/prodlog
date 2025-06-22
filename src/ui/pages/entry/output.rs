@@ -1,9 +1,10 @@
 use axum::response::Html;
 use crate::ui::pages::entry::common::generate_detail_page;
 
-pub async fn handle_output(
-) -> Html<String> {
-    let script = r#"
+pub const OUTPUT_CONTENT: &str = r#"
+    <link rel="stylesheet" href="/static/xterm.css" />
+    <script src="/static/xterm.js"></script>
+    <script>
         // Fetch the entry data first
         window.prodlog.get_prodlog_entry()
             .then(entry => {
@@ -32,15 +33,16 @@ pub async fn handle_output(
             })
             .catch(error => {
                 document.body.innerHTML = `<div style="color: red; padding: 20px;">Error: ${error.message}</div>`;
-            });"#;
-    let content = format!(
-        "
-        <link rel=\"stylesheet\" href=\"/static/xterm.css\" />
-        <script src=\"/static/xterm.js\"></script>
-        <div id=\"terminal\"/>
-        <script>
-            {script}
-        </script>
-        ");
-    Html(generate_detail_page("Output View", &content))
+            });
+    </script>
+    <div class="section">
+        <h2 id="header-title">Output</h2>
+        <div id="terminal"/>
+    </div>
+    </div>
+    "#;
+
+pub async fn handle_output(
+) -> Html<String> {
+    Html(generate_detail_page("Output View", OUTPUT_CONTENT))
 }

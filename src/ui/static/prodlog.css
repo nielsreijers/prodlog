@@ -83,16 +83,14 @@ body {
 .header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
+    align-items: center;]
 }
 h1 {
     color: var(--proton-text);
     font-size: 2rem;
-    margin-bottom: 2rem;
     font-weight: 600;
 }
-.header-info {
+.section {
     background-color: var(--proton-background);
     padding: 1.5rem;
     border-radius: 12px;
@@ -121,7 +119,7 @@ h1 {
     word-break: break-all;
 }
 h2 {
-    margin: 1rem 0;
+    margin: 0 0 1rem 0;
     font-size: 1.25rem;
     color: var(--proton-text);
 }
