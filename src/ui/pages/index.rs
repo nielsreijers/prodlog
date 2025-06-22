@@ -11,7 +11,7 @@ use crate::ui::{ resources, ProdlogUiState, format_timestamp };
 fn generate_index(table_rows: &str, filters: &Filters) -> String {
     let date_filter = filters.date.as_deref().unwrap_or("");
     let host_filter = filters.host.as_deref().unwrap_or("");
-    let command_filter = filters.command.as_deref().unwrap_or("");
+    let search_filter = filters.search.as_deref().unwrap_or("");
     let noop_filter = if filters.show_noop.unwrap_or(false) { "checked" } else { "" };
     format!(
         r#"
@@ -31,7 +31,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
             <form method="get">
                 <input type="date" name="date" value="{date_filter}">
                 <input type="text" name="host" placeholder="Hostname" value="{host_filter}">
-                <input type="text" name="command" placeholder="Command" value="{command_filter}">
+                <input type="text" name="search" placeholder="Command or message" value="{search_filter}">
                     <label class="switch">
                         <input type="checkbox" name="show_noop" value="true" {noop_filter}>
                         <span class="slider"></span>

@@ -82,8 +82,9 @@ impl UiSource for JsonSink {
                 }
             }
             
-            if let Some(command) = &filters.command {
-                if !entry.cmd.to_lowercase().contains(&command.to_lowercase()) {
+            if let Some(command) = &filters.search {
+                if !entry.cmd.to_lowercase().contains(&command.to_lowercase()) && 
+                   !entry.message.to_lowercase().contains(&command.to_lowercase()) {
                     continue;
                 }
             }

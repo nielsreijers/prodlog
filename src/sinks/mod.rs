@@ -16,7 +16,7 @@ pub trait Sink: Send + Sync {
 pub struct Filters {
     pub date: Option<String>,
     pub host: Option<String>,
-    pub command: Option<String>,
+    pub search: Option<String>,
     pub show_noop: Option<bool>,
 }
 

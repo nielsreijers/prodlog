@@ -240,8 +240,9 @@ impl UiSource for SqliteSink {
             params.push(Box::new(format!("%{}%", host)));
         }
 
-        if let Some(command) = &filters.command {
-            query.push_str(" AND cmd LIKE ?");
+        if let Some(command) = &filters.search {
+            query.push_str(" AND (cmd LIKE ? OR message LIKE ?)");
+            params.push(Box::new(format!("%{}%", command)));
             params.push(Box::new(format!("%{}%", command)));
         }
 
