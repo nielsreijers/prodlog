@@ -1,8 +1,13 @@
+use std::sync::Arc;
+
 use axum::{ extract::{Path, State}, http::StatusCode, response::{Html, IntoResponse}, Json };
 use serde::Deserialize;
 use serde_json::json;
 use similar::{ ChangeTag, TextDiff };
+use tokio::sync::RwLock;
 use uuid::Uuid;
+
+use crate::{model::CaptureV2_4, sinks::UiSource};
 
 use super::ProdlogUiState;
 
@@ -13,71 +18,57 @@ pub struct EntryPostData {
     pub is_noop: bool,
 }
 
-pub async fn handle_entry_post(
-    State(sink): State<ProdlogUiState>,
-    Json(data): Json<EntryPostData>
-) -> Html<String> {
-    let uuid = match Uuid::parse_str(&data.uuid) {
-        Ok(uuid) => uuid,
-        Err(_) => {
-            return Html(String::from("Invalid UUID"));
-        }
-    };
-
-    let entry = match sink.read().await.get_entry_by_id(uuid) {
-        Ok(Some(mut entry)) => {
-            entry.message = data.message;
-            entry.is_noop = data.is_noop;
-            entry
-        }
-        _ => {
-            return Html(String::from("Entry not found"));
-        }
-    };
-
-    match sink.write().await.add_entry(&entry) {
-        Ok(_) => Html(String::from("Success")),
-        Err(err) => Html(format!("Error saving entry: {}", err)),
-    }
-}
-
-pub async fn handle_entry_get(
-    State(sink): State<ProdlogUiState>,
-    Path(uuid): Path<String>,
-) -> impl IntoResponse {
+pub async fn get_entry(
+    sink: Arc<RwLock<Box<dyn UiSource>>>,
+    uuid: &str,
+) -> Result<CaptureV2_4, (StatusCode, String)> {
     let uuid = match Uuid::parse_str(&uuid) {
         Ok(uuid) => uuid,
         Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Invalid UUID format"
-                }))
-            ).into_response();
+            return Err((StatusCode::BAD_REQUEST, "Invalid UUID format".to_string()));
         }
     };
 
     let entry = match sink.read().await.get_entry_by_id(uuid) {
         Ok(Some(entry)) => entry,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "Entry not found"
-                }))
-            ).into_response();
+            return Err((StatusCode::NOT_FOUND, "Entry not found".to_string()));
         }
         Err(err) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": format!("Error loading entry: {}", err)
-                }))
-            ).into_response();
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error loading entry: {}", err)));
         }
     };
 
-    (StatusCode::OK, Json(entry)).into_response()
+    Ok(entry)
+}
+
+pub async fn handle_entry_get(
+    State(sink): State<ProdlogUiState>,
+    Path(uuid): Path<String>,
+) -> impl IntoResponse {
+    match get_entry(sink.clone(), &uuid).await {
+        Ok(entry) => (StatusCode::OK, Json(entry)).into_response(),
+        Err((status, message)) => (status, Json(json!({ "error": message }))).into_response(),
+    }
+}
+
+pub async fn handle_entry_post(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<EntryPostData>
+) -> impl IntoResponse {
+    let entry = match get_entry(sink.clone(), &data.uuid).await {
+        Ok(mut entry) => {
+                entry.message = data.message;
+                entry.is_noop = data.is_noop;
+                entry
+        },
+        Err((status, message)) => return (status, Json(json!({ "error": message }))).into_response(),
+    };
+
+    match sink.write().await.add_entry(&entry) {
+        Ok(_) => (StatusCode::OK, Html(String::from("Success"))).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("Error saving entry: {}", err))).into_response(),
+    }
 }
 
 fn simple_diff(orig: &str, edited: &str) -> String {
@@ -105,48 +96,11 @@ pub async fn handle_diffcontent(
     State(sink): State<ProdlogUiState>,
     Path(uuid): Path<String>,
 ) -> impl IntoResponse {
-    let uuid = match Uuid::parse_str(&uuid) {
-        Ok(uuid) => uuid,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": "Invalid UUID format"
-                }))
-            ).into_response();
-        }
+    let entry = match get_entry(sink.clone(), &uuid).await {
+        Ok(entry) => entry,
+        Err((status, message)) => return (status, Json(json!({ "error": message }))).into_response(),
     };
 
-    let entry = match sink.read().await.get_entry_by_id(uuid) {
-        Ok(Some(entry)) => {
-            if entry.capture_type != crate::model::CaptureType::Edit {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({
-                        "error": "Not an edit entry"
-                    }))
-                ).into_response();
-            } else {
-                entry
-            }        
-        }
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "error": "Entry not found"
-                }))
-            ).into_response();
-        }
-        Err(err) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "error": format!("Error loading entry: {}", err)
-                }))
-            ).into_response();
-        }
-    };
     let orig = String::from_utf8_lossy(&entry.original_content);
     let edited = String::from_utf8_lossy(&entry.edited_content);
     (StatusCode::OK, Json(json!({ "diff": simple_diff(&orig, &edited) }))).into_response()
