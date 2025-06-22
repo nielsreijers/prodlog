@@ -17,16 +17,18 @@ use std::ffi::CString;
 use chrono::Utc;
 use termion::{ color, style };
 use std::fs;
-use clap::Parser;
 use std::path::PathBuf;
 use dirs;
 use uuid::Uuid;
 use whoami;
 use model::{ CaptureType, CaptureV2_4 };
 
+use crate::config::get_config;
+
 mod ui;
 mod sinks;
 mod helpers;
+mod config;
 mod model;
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
@@ -37,29 +39,6 @@ const CMD_START_CAPTURE_EDIT: &str = "START CAPTURE EDIT";
 const CMD_STOP_CAPTURE_RUN: &str = "STOP CAPTURE RUN";
 const CMD_STOP_CAPTURE_EDIT: &str = "STOP CAPTURE EDIT";
 const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
-
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)] // Add metadata
-struct CliArgs {
-    #[arg(
-        long,
-        value_name = "DIR",
-        default_value = ".local/share/prodlog",
-        help = "Directory to store production logs"
-    )]
-    dir: PathBuf,
-
-    #[arg(long, value_name = "PORT", default_value = "5000", help = "Port to run the UI on")]
-    port: u16,
-
-    #[arg(
-        long,
-        value_name = "IMPORT",
-        default_value = None,
-        help = "Import a prodlog json or sqlite file"
-    )]
-    import: Option<String>,
-}
 
 enum StreamState {
     InProgress(String),
@@ -510,11 +489,16 @@ impl StdoutHandler {
 }
 
 fn run_child() -> Result<(), std::io::Error> {
-    // let shell = std::env::var("SHELL").unwrap_or_else(|_| String::from("/bin/bash"));
-    let shell = String::from("/bin/bash");
-    let cmd = CString::new(shell).expect("CString::new failed");
-    let args: [CString; 0] = [];
-    execvp(&cmd, &args)?;
+    let cmdline = get_config().cmd.clone();
+    let parts: Vec<&str> = cmdline.split_whitespace().collect();
+    if parts.is_empty() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Empty shell command"));
+    }
+    let args: Vec<CString> = parts
+        .iter()
+        .map(|&s| CString::new(s).expect("CString::new failed"))
+        .collect();    
+    execvp(&args[0], &args)?;
     Ok(())
 }
 
@@ -658,15 +642,13 @@ fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<()
 
 #[tokio::main]
 async fn main() {
-    let cli_args = CliArgs::parse();
-
     // Get the log directory path
-    let prodlog_dir = if cli_args.dir.is_absolute() {
-        cli_args.dir.clone()
+    let prodlog_dir = if get_config().dir.is_absolute() {
+        get_config().dir.clone()
     } else {
         // For relative paths, prepend the home directory
         let home_dir = dirs::home_dir().expect("Could not determine home directory");
-        home_dir.join(&cli_args.dir)
+        home_dir.join(get_config().dir.clone())
     };
     print_prodlog_message(&format!("prodlog logging to {:?}", prodlog_dir));
 
@@ -674,12 +656,12 @@ async fn main() {
     let mut sinks = get_sinks(&prodlog_dir);
 
     // Import a prodlog json or sqlite file if specified2
-    if let Some(import_file) = cli_args.import {
+    if let Some(import_file) = &get_config().import {
         import(&import_file, &mut sinks).unwrap();
     }
 
     // Start the UI in a separate task
-    let ui_port = cli_args.port;
+    let ui_port = get_config().port;
     tokio::spawn(async move {
         // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
         let sqlite_file = prodlog_dir.join("prodlog.sqlite");
@@ -689,15 +671,18 @@ async fn main() {
         ui::run_ui(sink, ui_port).await;
     });
 
+    let mut is_child = "";
     let result = match (unsafe { nix::pty::forkpty(None, None) }).unwrap() {
-        ForkptyResult::Child => run_child(),
+        ForkptyResult::Child => {
+            is_child = "CHILD PROCESS ";
+            run_child()
+        },
         ForkptyResult::Parent { child, master } => { run_parent(sinks, child, master).await }
     };
     if let Err(e) = result {
-        print_prodlog_message(&format!("PRODLOG EXITING WITH ERROR: {}", e));
-        std::process::exit(1);
+        prodlog_panic(&format!("PRODLOG {}EXITING WITH ERROR: {}", is_child, e));
     } else {
-        print_prodlog_message("PRODLOG EXITING");
+        print_prodlog_message(&format!("PRODLOG {}EXITING", is_child));
         std::process::exit(0);
     }
 }
