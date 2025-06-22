@@ -96,7 +96,7 @@ fn generate_entry(entry: &CaptureV2_4) -> String {
         } else {
             format!("prodlog edit {}", entry.filename)
         }
-    };
+    }.replace("'", "\\'");
     let duration = entry.duration_ms;
     let exit_code = entry.exit_code;
     let uuid = entry.uuid.to_string();
