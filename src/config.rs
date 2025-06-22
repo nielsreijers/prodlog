@@ -31,6 +31,14 @@ pub struct CliArgs {
         help = "Initial command to run. Defaults to starting bash, but you can use something like 'ssh <host>' to go to a remote directly."
     )]
     pub cmd: String,
+
+    #[arg(
+        long,
+        value_name = "HEX_COLOUR",
+        default_value = "#FFFFFF",
+        help = "Background colour for the UI."
+    )]
+    pub ui_background: String,
 }
 
 static CONFIG: OnceLock<CliArgs> = OnceLock::new();

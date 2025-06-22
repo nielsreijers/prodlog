@@ -4,6 +4,7 @@ pub fn generate_detail_page(title: &str, content: &str) -> String {
 <html>
 <head>
     <title>{title}</title>
+    <link rel="stylesheet" href="/prodlog-dyn.css">
     <link rel="stylesheet" href="/static/prodlog.css">
     <script src="/static/prodlog.js"></script>
 </head>

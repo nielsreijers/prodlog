@@ -19,6 +19,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 <html>
 <head>
     <title>Prodlog Viewer</title>
+    <link rel="stylesheet" href="/prodlog-dyn.css">
     <link rel="stylesheet" href="/static/prodlog.css">
 </head>
 <body>

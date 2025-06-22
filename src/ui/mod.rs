@@ -1,8 +1,8 @@
-use axum::{ routing::{get, post}, Router };
+use axum::{ routing::{get, post}, Router, response::Response, http::StatusCode };
 use chrono::{ DateTime, Utc };
 use tokio::sync::RwLock;
 use std::sync::Arc;
-use crate::sinks::UiSource;
+use crate::{config::get_config, sinks::UiSource};
 
 mod resources;
 mod rest;
@@ -15,9 +15,25 @@ fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
     timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()
 }
 
+pub async fn handle_prodlog_dyn_css() -> Response {
+    let background = get_config().ui_background.clone();
+    let css = format!("
+        :root {{
+            --proton-background: {background};
+        }}
+    ");
+    
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/css")
+        .body(axum::body::Body::from(css))
+        .unwrap()
+}
+
 pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
         .route("/", get(pages::index::handle_index))
+        .route("/prodlog-dyn.css", get(handle_prodlog_dyn_css))
         .route("/output/:uuid", get(pages::entry::output::handle_output))
         .route("/diff/:uuid", get(pages::entry::diff::handle_diff))
         .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
