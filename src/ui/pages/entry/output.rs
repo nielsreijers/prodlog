@@ -19,6 +19,8 @@ pub const OUTPUT_CONTENT: &str = r#"
                     convertEol: true,
                     disableStdin: true
                 });
+                // Don't let xterm.js handle any key events
+                term.attachCustomKeyEventHandler((event) => false);
                 term.open(document.getElementById('terminal'));
 
                 // Decode base64 to raw bytes
