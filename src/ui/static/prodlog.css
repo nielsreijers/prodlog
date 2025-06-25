@@ -1,10 +1,10 @@
 :root {
-    --proton-blue: #6D4AFF;
-    --proton-blue-hover: rgb(206, 198, 236);
-    --proton-text: #1C1B1F;
-    --proton-text-secondary: #4E4B66;
-    --proton-border: #E5E7EB;
-    --proton-hover: #F5F5F5;
+    --prodlog-blue: #6D4AFF;
+    --prodlog-blue-hover: rgb(206, 198, 236);
+    --prodlog-text: #1C1B1F;
+    --prodlog-text-secondary: #4E4B66;
+    --prodlog-border: #E5E7EB;
+    --prodlog-hover: #F5F5F5;
 }
 
 /* Base styles */
@@ -12,8 +12,8 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: var(--proton-background);
-    color: var(--proton-text);
+    background-color: var(--prodlog-background);
+    color: var(--prodlog-text);
 }
 .container {
     max-width: none;
@@ -25,7 +25,7 @@ body {
 /* Button styles */
 .bluebutton {
     padding: 0.75rem 1.5rem;
-    background-color: var(--proton-blue);
+    background-color: var(--prodlog-blue);
     color: white;
     border: none;
     border-radius: 8px;
@@ -40,7 +40,7 @@ body {
     gap: 0.5rem;
 }
 .bluebutton:hover {
-    background-color: var(--proton-blue-hover);
+    background-color: var(--prodlog-blue-hover);
 }
 .bluebutton svg {
     width: 16px;
@@ -50,8 +50,8 @@ body {
 .greybutton {
     padding: 0.75rem 1.5rem;
     background-color: transparent;
-    color: var(--proton-text);
-    border: 1px solid var(--proton-border);
+    color: var(--prodlog-text);
+    border: 1px solid var(--prodlog-border);
     border-radius: 8px;
     text-decoration: none;
     font-weight: 500;
@@ -62,7 +62,7 @@ body {
     line-height: inherit;
 }
 .greybutton:hover {
-    background-color: var(--proton-hover);
+    background-color: var(--prodlog-hover);
 }
 
 
@@ -70,7 +70,7 @@ body {
 .message-row {
     font-size: 0.875rem;
     font-style: italic;
-    color: var(--proton-text-secondary);
+    color: var(--prodlog-text-secondary);
     padding-top: 0;
     padding-bottom: 1rem;
 }
@@ -85,12 +85,12 @@ body {
     align-items: center;]
 }
 h1 {
-    color: var(--proton-text);
+    color: var(--prodlog-text);
     font-size: 2rem;
     font-weight: 600;
 }
 .section {
-    background-color: var(--proton-background);
+    background-color: var(--prodlog-background);
     padding: 1.5rem;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -108,7 +108,7 @@ h1 {
     align-items: baseline;
 }
 .info-label {
-    color: var(--proton-text-secondary);
+    color: var(--prodlog-text-secondary);
     font-size: 0.875rem;
     min-width: 80px;
 }
@@ -120,7 +120,7 @@ h1 {
 h2 {
     margin: 0 0 1rem 0;
     font-size: 1.25rem;
-    color: var(--proton-text);
+    color: var(--prodlog-text);
 }
 
 /* Diff styles */
@@ -128,8 +128,8 @@ h2 {
     white-space: pre-wrap;
     margin: 0;
     padding: 1.5rem;
-    background-color: var(--proton-background);
-    border: 1px solid var(--proton-border);
+    background-color: var(--prodlog-background);
+    border: 1px solid var(--prodlog-border);
     border-radius: 12px;
     font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
     font-size: 0.875rem;
@@ -176,7 +176,7 @@ h2 {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--proton-border);
+    background-color: var(--prodlog-border);
     transition: .4s;
     border-radius: 20px;
 }
@@ -192,21 +192,21 @@ h2 {
     border-radius: 50%;
 }
 input:checked + .slider {
-    background-color: var(--proton-blue);
+    background-color: var(--prodlog-blue);
 }
 input:checked + .slider:before {
     transform: translateX(20px);
 }
 .switch-label {
     font-size: 0.875rem;
-    color: var(--proton-text-secondary);
+    color: var(--prodlog-text-secondary);
 }
 
 /* Edit/Copy button styles */
 .edit-or-copy-button {
     background: none;
     border: none;
-    color: var(--proton-text-secondary);
+    color: var(--prodlog-text-secondary);
     cursor: pointer;
     padding: 0.25rem;
     margin-left: 0.5rem;
@@ -214,20 +214,20 @@ input:checked + .slider:before {
     transition: all 0.2s ease;
 }
 .edit-or-copy-button:hover {
-    background-color: var(--proton-hover);
-    color: var(--proton-text);
+    background-color: var(--prodlog-hover);
+    color: var(--prodlog-text);
 }
 .edit-or-copy-button svg {
     width: 16px;
     height: 16px;
 }
 .edit-or-copy-button.copied {
-    color: var(--proton-blue);
+    color: var(--prodlog-blue);
 }
 
 /* Link styles */
 a {
-    color: var(--proton-blue);
+    color: var(--prodlog-blue);
     text-decoration: none;
     font-weight: 500;
 }
@@ -239,18 +239,18 @@ a:hover {
 textarea {
     width: 100%;
     padding: 0.75rem 1rem;
-    border: 1px solid var(--proton-border);
+    border: 1px solid var(--prodlog-border);
     border-radius: 8px;
     font-size: 0.875rem;
-    color: var(--proton-text);
-    background-color: var(--proton-background);
+    color: var(--prodlog-text);
+    background-color: var(--prodlog-background);
     transition: all 0.2s ease;
     font-family: inherit;
     resize: vertical;
 }
 textarea:focus {
     outline: none;
-    border-color: var(--proton-blue);
+    border-color: var(--prodlog-blue);
     box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
 }
 
@@ -260,7 +260,7 @@ table {
     border-collapse: separate;
     border-spacing: 0;
     margin-top: 1rem;
-    background-color: var(--proton-background);
+    background-color: var(--prodlog-background);
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -274,10 +274,10 @@ th, td {
     text-overflow: ellipsis;
 }
 tbody {
-    border-bottom: 1px solid var(--proton-border);
+    border-bottom: 1px solid var(--prodlog-border);
 }
 tbody:hover {
-    background-color: var(--proton-blue-hover);
+    background-color: var(--prodlog-blue-hover);
 }
 tr.error-row {
     background-color: #ffeaea !important;
@@ -288,7 +288,7 @@ tr.noop-row {
 
 /* Filter styles */
 .filters {
-    background-color: var(--proton-background);
+    background-color: var(--prodlog-background);
     padding: 1.5rem;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -300,15 +300,15 @@ tr.noop-row {
 }
 input, select {
     padding: 0.75rem 1rem;
-    border: 1px solid var(--proton-border);
+    border: 1px solid var(--prodlog-border);
     border-radius: 8px;
     font-size: 0.875rem;
-    color: var(--proton-text);
-    background-color: var(--proton-background);
+    color: var(--prodlog-text);
+    background-color: var(--prodlog-background);
     transition: all 0.2s ease;
 }
 input:focus, select:focus {
     outline: none;
-    border-color: var(--proton-blue);
+    border-color: var(--prodlog-blue);
     box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
 }
