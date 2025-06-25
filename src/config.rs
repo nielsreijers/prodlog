@@ -35,7 +35,7 @@ pub struct CliArgs {
     #[arg(
         long,
         value_name = "HEX_COLOUR",
-        default_value = "#FFFFFF",
+        default_value = "#D8D6EC",
         help = "Background colour for the UI."
     )]
     pub ui_background: String,

@@ -19,7 +19,7 @@ pub async fn handle_prodlog_dyn_css() -> Response {
     let background = get_config().ui_background.clone();
     let css = format!("
         :root {{
-            --prodlog-background: {background};
+            --prodlog-dyn-background: {background};
         }}
     ");
     
