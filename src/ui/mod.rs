@@ -34,6 +34,8 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
         .route("/", get(pages::index::handle_index))
         .route("/prodlog-dyn.css", get(handle_prodlog_dyn_css))
+        .route("/redact", get(pages::redact::handle_redact_get))
+        .route("/redact", post(pages::redact::handle_redact_post))
         .route("/output/:uuid", get(pages::entry::output::handle_output))
         .route("/diff/:uuid", get(pages::entry::diff::handle_diff))
         .route("/diffcontent/:uuid", get(rest::handle_diffcontent))

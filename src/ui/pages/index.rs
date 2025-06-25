@@ -73,6 +73,9 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <button class="bluebutton" type="submit">Filter</button>
                 <button class="greybutton" type="button" onclick="clearFilters()">Clear</button>
             </form>
+            <div class="filters-right">
+                <button class="bluebutton" type="button" onclick="window.location.href='/redact'">Redact Passwords</button>
+            </div>
         </div>
         <table>
             <thead>

@@ -65,6 +65,25 @@ body {
 .greybutton:hover {
     background-color: var(--prodlog-hover);
 }
+.redbutton {
+    padding: 0.75rem 1.5rem;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.redbutton:hover {
+    background-color: #c82333;
+}
 
 
 /* Message styles */
@@ -256,6 +275,35 @@ textarea:focus {
     box-shadow: 0 0 0 2px rgba(109, 74, 255, 0.1);
 }
 
+/* Form styles */
+.form-group {
+    margin-bottom: 1.5rem;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: var(--prodlog-text);
+}
+
+/* Message styles */
+.message {
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    font-weight: 500;
+}
+.message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+.message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
 /* Table styles */
 table {
     width: 100%;
@@ -296,9 +344,18 @@ tr.noop-row {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     margin-bottom: 2rem;
     display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+.filters form {
+    display: flex;
     gap: 1rem;
     flex-wrap: wrap;
     align-items: center;
+}
+.filters-right {
+    flex-shrink: 0;
 }
 input, select {
     padding: 0.75rem 1rem;
