@@ -24,10 +24,9 @@ body {
 }
 
 /* Button styles */
-.bluebutton {
+.bluebutton, .greybutton, .redbutton {
     padding: 0.75rem 1.5rem;
-    background-color: var(--prodlog-blue);
-    color: white;
+    margin: 0.5rem 0rem 0.5rem 0rem;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -39,6 +38,10 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+}
+.bluebutton {
+    background-color: var(--prodlog-blue);
+    color: white;
 }
 .bluebutton:hover {
     background-color: var(--prodlog-blue-hover);
@@ -49,37 +52,15 @@ body {
     stroke: currentColor;
 }
 .greybutton {
-    padding: 0.75rem 1.5rem;
     background-color: transparent;
     color: var(--prodlog-text);
-    border: 1px solid var(--prodlog-border);
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    display: inline-block;
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
 }
 .greybutton:hover {
     background-color: var(--prodlog-hover);
 }
 .redbutton {
-    padding: 0.75rem 1.5rem;
     background-color: #dc3545;
     color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
 }
 .redbutton:hover {
     background-color: #c82333;
@@ -260,6 +241,7 @@ a:hover {
 textarea {
     width: 100%;
     padding: 0.75rem 1rem;
+    margin: 0.5rem 0rem 0.5rem 0rem;
     border: 1px solid var(--prodlog-border);
     border-radius: 8px;
     font-size: 0.875rem;
@@ -268,6 +250,7 @@ textarea {
     transition: all 0.2s ease;
     font-family: inherit;
     resize: vertical;
+    box-sizing: border-box;
 }
 textarea:focus {
     outline: none;
