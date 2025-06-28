@@ -42,6 +42,7 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
         .route("/edit/:uuid", get(pages::entry::edit::handle_edit))
         .route("/entry/:uuid", get(rest::handle_entry_get))
         .route("/entry", post(rest::handle_entry_post))
+        .route("/entry/redact", post(rest::handle_entry_redact))
         .route("/static/*path", get(static_files::serve_file))
         .with_state(sink);
 

@@ -18,6 +18,12 @@ pub struct EntryPostData {
     pub is_noop: bool,
 }
 
+#[derive(Deserialize)]
+pub struct EntryRedactData {
+    pub uuid: String,
+    pub password: String,
+}
+
 pub async fn get_entry(
     sink: Arc<RwLock<Box<dyn UiSource>>>,
     uuid: &str,
@@ -90,6 +96,67 @@ fn simple_diff(orig: &str, edited: &str) -> String {
         );
     }
     html
+}
+
+pub async fn handle_entry_redact(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<EntryRedactData>
+) -> impl IntoResponse {
+    if data.password.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Password cannot be empty" }))).into_response();
+    }
+
+    let mut entry = match get_entry(sink.clone(), &data.uuid).await {
+        Ok(entry) => entry,
+        Err((status, message)) => return (status, Json(json!({ "error": message }))).into_response(),
+    };
+
+    let password = data.password.trim();
+    let mut redacted = false;
+
+    // Redact password in command
+    if entry.cmd.contains(password) {
+        entry.cmd = entry.cmd.replace(password, "[REDACTED]");
+        redacted = true;
+    }
+
+    // Redact password in captured output
+    let output_str = String::from_utf8_lossy(&entry.captured_output);
+    if output_str.contains(password) {
+        let new_output = output_str.replace(password, "[REDACTED]");
+        entry.captured_output = new_output.into_bytes();
+        redacted = true;
+    }
+
+    // Redact password in original content (for edit entries)
+    if !entry.original_content.is_empty() {
+        let original_str = String::from_utf8_lossy(&entry.original_content);
+        if original_str.contains(password) {
+            let new_original = original_str.replace(password, "[REDACTED]");
+            entry.original_content = new_original.into_bytes();
+            redacted = true;
+        }
+    }
+
+    // Redact password in edited content (for edit entries)
+    if !entry.edited_content.is_empty() {
+        let edited_str = String::from_utf8_lossy(&entry.edited_content);
+        if edited_str.contains(password) {
+            let new_edited = edited_str.replace(password, "[REDACTED]");
+            entry.edited_content = new_edited.into_bytes();
+            redacted = true;
+        }
+    }
+
+    if !redacted {
+        return (StatusCode::OK, Json(json!({ "message": "Password not found in this entry" }))).into_response();
+    }
+
+    // Save the redacted entry
+    match sink.write().await.add_entry(&entry) {
+        Ok(_) => (StatusCode::OK, Json(json!({ "message": "Password redacted successfully" }))).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error saving entry: {}", err) }))).into_response(),
+    }
 }
 
 pub async fn handle_diffcontent(

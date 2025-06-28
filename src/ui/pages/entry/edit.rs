@@ -22,6 +22,20 @@ pub const EDIT_CONTENT: &str = r#"
             </div>
         </form>
     </div>
+    <div class="section">
+        <h2>Redact Password</h2>
+        <p>Remove a password from this specific entry. This will replace all occurrences of the password with [REDACTED].</p>
+        <form id="redactForm">
+            <div>
+                <label for="password">Password to redact:</label>
+                <input type="text" name="password" id="redact-password" placeholder="Enter password to redact">
+            </div>
+            <div class="button-group">
+                <button type="submit" class="redbutton">Redact Password</button>
+            </div>
+        </form>
+        <div id="redact-message" class="message" style="display: none;"></div>
+    </div>
     <script>
         window.prodlog.get_prodlog_entry()
                 .then(entry => {
@@ -52,7 +66,63 @@ pub const EDIT_CONTENT: &str = r#"
                             alert('Error saving changes: ' + error);
                         }
                     });
+
+                    // Handle redact form
+                    document.getElementById('redactForm').addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        const form = e.target;
+                        const password = form.password.value.trim();
+                        
+                        if (!password) {
+                            showRedactMessage('Please enter a password to redact.', 'error');
+                            return;
+                        }
+
+                        if (!confirm(`Are you sure you want to redact the password "${password}" from this entry? This operation will permanently modify the entry data and cannot be undone.`)) {
+                            return;
+                        }
+
+                        try {
+                            const response = await fetch('/entry/redact', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    uuid: entry.uuid,
+                                    password: password
+                                })
+                            });
+                            
+                            const result = await response.json();
+                            
+                            if (response.ok) {
+                                showRedactMessage(result.message, 'success');
+                                form.password.value = '';
+                                // Refresh the page to show updated content
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1500);
+                            } else {
+                                showRedactMessage(result.error || 'Failed to redact password', 'error');
+                            }
+                        } catch (error) {
+                            showRedactMessage('Error redacting password: ' + error, 'error');
+                        }
+                    });
                 });
+
+        function showRedactMessage(message, type) {
+            const messageDiv = document.getElementById('redact-message');
+            messageDiv.textContent = message;
+            messageDiv.className = `message ${type}`;
+            messageDiv.style.display = 'block';
+            
+            // Hide message after 5 seconds
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
+        }
     </script>
     "#;
 
