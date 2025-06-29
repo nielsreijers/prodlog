@@ -7,7 +7,7 @@ use similar::{ ChangeTag, TextDiff };
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{model::CaptureV2_4, sinks::UiSource};
+use crate::{model::CaptureV2_4, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry};
 
 use super::ProdlogUiState;
 
@@ -22,6 +22,11 @@ pub struct EntryPostData {
 pub struct EntryRedactData {
     pub uuid: String,
     pub password: String,
+}
+
+#[derive(Deserialize)]
+pub struct BulkRedactData {
+    pub passwords: Vec<String>,
 }
 
 pub async fn get_entry(
@@ -98,67 +103,6 @@ fn simple_diff(orig: &str, edited: &str) -> String {
     html
 }
 
-pub async fn handle_entry_redact(
-    State(sink): State<ProdlogUiState>,
-    Json(data): Json<EntryRedactData>
-) -> impl IntoResponse {
-    if data.password.trim().is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Password cannot be empty" }))).into_response();
-    }
-
-    let mut entry = match get_entry(sink.clone(), &data.uuid).await {
-        Ok(entry) => entry,
-        Err((status, message)) => return (status, Json(json!({ "error": message }))).into_response(),
-    };
-
-    let password = data.password.trim();
-    let mut redacted = false;
-
-    // Redact password in command
-    if entry.cmd.contains(password) {
-        entry.cmd = entry.cmd.replace(password, "[REDACTED]");
-        redacted = true;
-    }
-
-    // Redact password in captured output
-    let output_str = String::from_utf8_lossy(&entry.captured_output);
-    if output_str.contains(password) {
-        let new_output = output_str.replace(password, "[REDACTED]");
-        entry.captured_output = new_output.into_bytes();
-        redacted = true;
-    }
-
-    // Redact password in original content (for edit entries)
-    if !entry.original_content.is_empty() {
-        let original_str = String::from_utf8_lossy(&entry.original_content);
-        if original_str.contains(password) {
-            let new_original = original_str.replace(password, "[REDACTED]");
-            entry.original_content = new_original.into_bytes();
-            redacted = true;
-        }
-    }
-
-    // Redact password in edited content (for edit entries)
-    if !entry.edited_content.is_empty() {
-        let edited_str = String::from_utf8_lossy(&entry.edited_content);
-        if edited_str.contains(password) {
-            let new_edited = edited_str.replace(password, "[REDACTED]");
-            entry.edited_content = new_edited.into_bytes();
-            redacted = true;
-        }
-    }
-
-    if !redacted {
-        return (StatusCode::OK, Json(json!({ "message": "Password not found in this entry" }))).into_response();
-    }
-
-    // Save the redacted entry
-    match sink.write().await.add_entry(&entry) {
-        Ok(_) => (StatusCode::OK, Json(json!({ "message": "Password redacted successfully" }))).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error saving entry: {}", err) }))).into_response(),
-    }
-}
-
 pub async fn handle_diffcontent(
     State(sink): State<ProdlogUiState>,
     Path(uuid): Path<String>,
@@ -173,3 +117,85 @@ pub async fn handle_diffcontent(
     (StatusCode::OK, Json(json!({ "diff": simple_diff(&orig, &edited) }))).into_response()
 }
 
+pub async fn handle_entry_redact_post(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<EntryRedactData>
+) -> impl IntoResponse {
+    if data.password.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Password cannot be empty" }))).into_response();
+    }
+
+    let mut entry = match get_entry(sink.clone(), &data.uuid).await {
+        Ok(entry) => entry,
+        Err((status, message)) => return (status, Json(json!({ "error": message }))).into_response(),
+    };
+
+    let password = data.password.trim();
+    
+    // Use the helper function to redact the password
+    let redacted = redact_passwords_from_entry(&mut entry, &[password.to_string()]);
+
+    if !redacted {
+        return (StatusCode::OK, Json(json!({ "message": "Password not found in this entry" }))).into_response();
+    }
+
+    // Save the redacted entry
+    match sink.write().await.add_entry(&entry) {
+        Ok(_) => (StatusCode::OK, Json(json!({ "message": "Password redacted successfully" }))).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error saving entry: {}", err) }))).into_response(),
+    }
+}
+
+pub async fn handle_bulk_redact_post(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<BulkRedactData>
+) -> impl IntoResponse {
+    if data.passwords.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "No passwords provided" }))).into_response();
+    }
+
+    // Filter out empty passwords
+    let passwords: Vec<String> = data.passwords
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    if passwords.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "No valid passwords provided" }))).into_response();
+    }
+
+    // Get all entries
+    let entries = match sink.read().await.get_entries(&Filters::default()) {
+        Ok(entries) => entries,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", e) }))).into_response(),
+    };
+
+    let mut redacted_count = 0;
+    let total_entries = entries.len();
+
+    // Process each entry
+    for entry in entries {
+        let mut modified_entry = entry.clone();
+        
+        // Use the helper function to redact passwords
+        let entry_modified = redact_passwords_from_entry(&mut modified_entry, &passwords);
+
+        // Save the modified entry if it was changed
+        if entry_modified {
+            match sink.write().await.add_entry(&modified_entry) {
+                Ok(_) => redacted_count += 1,
+                Err(e) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, 
+                        Json(json!({ "error": format!("Error saving redacted entry {}: {}", modified_entry.uuid, e) }))).into_response();
+                }
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(json!({ 
+        "message": format!("Redaction complete. {} out of {} entries were modified.", redacted_count, total_entries),
+        "redacted_count": redacted_count,
+        "total_entries": total_entries
+    }))).into_response()
+}
