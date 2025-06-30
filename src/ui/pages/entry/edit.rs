@@ -2,52 +2,62 @@ use axum::{extract::{Path, State}, response::Html};
 use crate::{model::CaptureType, ui::{pages::entry::common::generate_detail_page, rest::get_entry, ProdlogUiState}};
 
 pub const EDIT_CONTENT: &str = r#"
-    <div class="section">
-        <h2 id="header-title">Edit entry</h2>
-        <form id="editForm">
-            <div>
-                <label for="message">Message:</label>
-                <textarea name="message" id="edit-message" rows="5">Loading...</textarea>
+    <div class="edit-sections-container">
+        <div class="section comment-section">
+            <h2>Comment</h2>
+            <form id="editForm">
+                <div>
+                    <textarea name="message" id="edit-message" rows="5">Loading...</textarea>
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="bluebutton">Update Comment</button>
+                </div>
+            </form>
+        </div>
+        <div class="section noop-section">
+            <h2>No-op</h2>
+            <div class="noop-toggle-container">
+                <div class="switch-container">
+                    <label class="switch">
+                        <input type="checkbox" id="noop-switch" onchange="toggleNoop(this)">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="switch-label" id="noop-status">Loading...</span>
+                </div>
             </div>
-            <div class="switch-container">
-                <label class="switch">
-                    <input type="checkbox" name="is_noop" id="edit-is-noop">
-                    <span class="slider"></span>
-                </label>
-                <span class="switch-label">Mark as no-op (this command had no effect)</span>
-            </div>
-            <div class="button-group">
-                <button type="submit" class="bluebutton">Save</button>
-                <a href="/" class="greybutton">Cancel</a>
-            </div>
-        </form>
-    </div>
-    <div class="section">
-        <h2>Redact Password</h2>
-        <p>Remove a password from this specific entry. This will replace all occurrences of the password with [REDACTED].</p>
-        <form id="redactForm">
-            <div>
-                <label for="password">Password to redact:</label>
-                <input type="text" name="password" id="redact-password" placeholder="Enter password to redact">
-            </div>
-            <div class="button-group">
-                <button type="submit" class="redbutton">Redact Password</button>
-            </div>
-        </form>
-        <div id="redact-message" class="message" style="display: none;"></div>
+        </div>
+        <div class="section redact-section">
+            <h2>Redact Password</h2>
+            <p>Remove a password from this specific entry. This will replace all occurrences of the password with [REDACTED].</p>
+            <form id="redactForm">
+                <div>
+                    <label for="password">Password to redact:</label>
+                    <input  type="text" name="password" id="redact-password" placeholder="Enter password to redact">
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="redbutton">Redact Password</button>
+                </div>
+            </form>
+            <div id="redact-message" class="message" style="display: none;"></div>
+        </div>
     </div>
     <script>
+        let currentEntry = null;
+        
         window.prodlog.get_prodlog_entry()
                 .then(entry => {
+                    currentEntry = entry;
                     document.getElementById("edit-message").textContent = entry.message;
-                    document.getElementById("edit-is-noop").checked = entry.is_noop;
+                    updateNoopStatus(entry.is_noop);
+                    
+                    // Handle comment form submission
                     document.getElementById('editForm').addEventListener('submit', async (e) => {
                         e.preventDefault();
                         const form = e.target;
                         const data = {
                             uuid: entry.uuid,
                             message: form.message.value,
-                            is_noop: form.is_noop.checked
+                            is_noop: entry.is_noop // Keep current noop status
                         };
                         try {
                             const response = await fetch('/entry', {
@@ -58,12 +68,14 @@ pub const EDIT_CONTENT: &str = r#"
                                 body: JSON.stringify(data)
                             });
                             if (response.ok) {
-                                window.location.href = '/';
+                                // Update entry object with new message
+                                currentEntry.message = form.message.value;
+                                showMessage('Comment updated successfully', 'success');
                             } else {
-                                alert('Failed to save changes');
+                                showMessage('Failed to update comment', 'error');
                             }
                         } catch (error) {
-                            alert('Error saving changes: ' + error);
+                            showMessage('Error updating comment: ' + error, 'error');
                         }
                     });
 
@@ -111,6 +123,85 @@ pub const EDIT_CONTENT: &str = r#"
                         }
                     });
                 });
+
+        async function toggleNoop(switchElement) {
+            if (!currentEntry) return;
+            
+            const newNoopStatus = switchElement.checked;
+            
+            // Disable switch during update
+            const statusSpan = document.getElementById('noop-status');
+            const originalText = statusSpan.textContent;
+            switchElement.disabled = true;
+            statusSpan.textContent = 'Updating...';
+            
+            try {
+                const response = await fetch('/entry', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        uuid: currentEntry.uuid,
+                        message: currentEntry.message,
+                        is_noop: newNoopStatus
+                    })
+                });
+                
+                const is_noop = newNoopStatus ? 'NO-OP' : 'NOT a no-op';
+                if (response.ok) {
+                    currentEntry.is_noop = newNoopStatus;
+                    updateNoopStatus(newNoopStatus);
+                    showMessage(`Entry successfully marker as ${is_noop}.`, 'success');
+                } else {
+                    // Revert switch state on error
+                    switchElement.checked = !newNoopStatus;
+                    showMessage(`Failed mark entry as ${is_noop}.`, 'error');
+                }
+            } catch (error) {
+                // Revert switch state on error
+                switchElement.checked = !newNoopStatus;
+                showMessage(`Error updating entry: ${error}`, 'error');
+            } finally {
+                switchElement.disabled = false;
+                if (statusSpan.textContent === 'Updating...') {
+                    statusSpan.textContent = originalText;
+                }
+            }
+        }
+        
+        function updateNoopStatus(isNoop) {
+            const statusSpan = document.getElementById('noop-status');
+            const switchElement = document.getElementById('noop-switch');
+            
+            switchElement.checked = isNoop;
+            statusSpan.textContent = isNoop ? 'Marked as no-op. This entry had no effect.' : 'Not a no-op.';
+        }
+        
+        function showMessage(message, type) {
+            // Remove any existing message
+            const existingMessage = document.querySelector('.temp-message');
+            if (existingMessage) {
+                existingMessage.remove();
+            }
+            
+            // Create new message div
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type} temp-message`;
+            messageDiv.textContent = message;
+            
+            // Insert at the top of the container
+            const container = document.querySelector('.container');
+            const firstSection = container.querySelector('.section');
+            container.insertBefore(messageDiv, firstSection);
+            
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                if (messageDiv.parentNode) {
+                    messageDiv.remove();
+                }
+            }, 3000);
+        }
 
         function showRedactMessage(message, type) {
             const messageDiv = document.getElementById('redact-message');

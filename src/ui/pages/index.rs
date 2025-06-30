@@ -65,11 +65,11 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <input type="date" name="date" id="dateFilter" value="{date_filter}">
                 <input type="text" name="host" id="hostFilter" placeholder="Hostname" value="{host_filter}">
                 <input type="text" name="search" id="searchFilter" placeholder="Command or message" value="{search_filter}">
-                    <label class="switch">
-                        <input type="checkbox" name="show_noop" id="noopFilter" value="true" {noop_filter}>
-                        <span class="slider"></span>
-                    </label>
-                    <span class="switch-label">Reveal no-op entries</span>
+                <label class="switch">
+                    <input type="checkbox" name="show_noop" id="noopFilter" value="true" {noop_filter}>
+                    <span class="slider"></span>
+                </label>
+                <span class="switch-label">Reveal no-op entries</span>
                 <button class="bluebutton" type="submit">Filter</button>
                 <button class="greybutton" type="button" onclick="clearFilters()">Clear</button>
             </form>
@@ -104,6 +104,12 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
         // Save filters to cookies when form is submitted
         document.getElementById('filterForm').addEventListener('submit', function() {{
             saveFilters();
+        }});
+
+        // Auto-submit form when noop filter is toggled
+        document.getElementById('noopFilter').addEventListener('change', function() {{
+            saveFilters();
+            document.getElementById('filterForm').submit();
         }});
 
         function saveFilters() {{
