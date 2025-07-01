@@ -28,7 +28,7 @@ fn generate_redact_page(passwords: &str, message: &str) -> String {
     <div class="container">
         <div class="header">
             <h1>Redact Passwords</h1>
-            <button class="bluebutton" type="button" onclick="window.location.href='/'">← Back to list</button>
+                            <button class="bluebutton" type="button" onclick="window.location.href='/legacy/'">← Back to list</button>
         </div>
         
         {message_html}

@@ -73,7 +73,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <button class="greybutton" type="button" onclick="clearFilters()">Clear</button>
             </form>
             <div class="filters-right">
-                <button class="bluebutton" type="button" onclick="window.location.href='/redact'">Redact Passwords</button>
+                <button class="bluebutton" type="button" onclick="window.location.href='/legacy/redact'">Redact Passwords</button>
             </div>
         </div>
         <table>
@@ -226,7 +226,7 @@ fn generate_entry(entry: &CaptureV2_4) -> String {
     let uuid = entry.uuid.to_string();
     let message_row = if !entry.message.is_empty() {
         format!(
-            r#"<tr class="message-row clickable-row" onclick="window.location.href='/entry/{uuid}'">
+                                r#"<tr class="message-row clickable-row" onclick="window.location.href='/legacy/entry/{uuid}'">
                 <td colspan="2"></td>
                 <td colspan="5" class="message-row">
                     <div>
@@ -242,7 +242,7 @@ fn generate_entry(entry: &CaptureV2_4) -> String {
     format!(
         r#"
         <tbody>
-            <tr{row_class} class="main-row clickable-row" onclick="window.location.href='/entry/{uuid}'">
+            <tr{row_class} class="main-row clickable-row" onclick="window.location.href='/legacy/entry/{uuid}'">
                 <td>{entry_type}</td>
                 <td>{start_time}</td>
                 <td>{host}</td>

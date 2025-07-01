@@ -304,7 +304,7 @@ fn generate_detail_page(title: &str, content: &str) -> String {
 <body>
     <div class="container">
         <div>
-            <button class="bluebutton" type="button" onclick="window.location.href='/'">← Back to list</button>
+                            <button class="bluebutton" type="button" onclick="window.location.href='/legacy/'">← Back to list</button>
         </div>
         <script>
         window.prodlog.get_prodlog_entry()
