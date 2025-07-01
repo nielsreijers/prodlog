@@ -65,6 +65,7 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
         // API routes 
         .route("/api/entries", get(rest::handle_entries_get))
+        .route("/api/entries/summary", get(rest::handle_entries_summary_get))
         .route("/api/entry/:uuid", get(rest::handle_entry_get))
         .route("/api/entry", post(rest::handle_entry_post))
         .route("/api/entry/redact", post(rest::handle_entry_redact_post))

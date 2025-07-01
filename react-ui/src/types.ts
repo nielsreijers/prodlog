@@ -19,6 +19,25 @@ export interface LogEntry {
   terminal_cols: number;
 }
 
+// Lightweight version for index page - excludes large content fields
+export interface LogEntrySummary {
+  uuid: string;
+  capture_type: 'Run' | 'Edit';
+  host: string;
+  cwd: string;
+  cmd: string;
+  start_time: string;
+  duration_ms: number;
+  message: string;
+  is_noop: boolean;
+  exit_code: number;
+  local_user: string;
+  remote_user: string;
+  filename: string;
+  terminal_rows: number;
+  terminal_cols: number;
+}
+
 export interface Filters {
   date?: string;
   host?: string;

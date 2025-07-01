@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogEntry, Filters } from '../types';
+import { LogEntrySummary, Filters } from '../types';
 import { api } from '../api';
 
 const CopyIcon = () => (
@@ -31,7 +31,7 @@ const EditIcon = () => (
 );
 
 interface CopyButtonProps {
-  entry: LogEntry;
+  entry: LogEntrySummary;
 }
 
 function CopyButton({ entry }: CopyButtonProps) {
@@ -62,7 +62,7 @@ function CopyButton({ entry }: CopyButtonProps) {
 }
 
 interface EntryRowProps {
-  entry: LogEntry;
+  entry: LogEntrySummary;
   onClick: () => void;
 }
 
@@ -166,7 +166,7 @@ function FilterForm({ filters, onFiltersChange }: FilterFormProps) {
 }
 
 export default function IndexPage() {
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [entries, setEntries] = useState<LogEntrySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -196,7 +196,7 @@ export default function IndexPage() {
     const loadEntries = async () => {
       try {
         setLoading(true);
-        const data = await api.getEntries(filters);
+        const data = await api.getEntriesSummary(filters);
         // Sort entries by start time, newest first
         data.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
         setEntries(data);

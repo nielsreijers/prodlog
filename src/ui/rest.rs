@@ -7,7 +7,7 @@ use similar::{ ChangeTag, TextDiff };
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{model::CaptureV2_4, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry};
+use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry};
 
 use super::ProdlogUiState;
 
@@ -69,6 +69,20 @@ pub async fn handle_entries_get(
 ) -> impl IntoResponse {
     match sink.read().await.get_entries(&filters) {
         Ok(entries) => (StatusCode::OK, Json(entries)).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", err) }))).into_response(),
+    }
+}
+
+pub async fn handle_entries_summary_get(
+    State(sink): State<ProdlogUiState>,
+    Query(filters): Query<Filters>,
+) -> impl IntoResponse {
+    match sink.read().await.get_entries(&filters) {
+        Ok(entries) => {
+            // Convert to lightweight summaries
+            let summaries: Vec<CaptureV2_4Summary> = entries.iter().map(|e| e.into()).collect();
+            (StatusCode::OK, Json(summaries)).into_response()
+        },
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", err) }))).into_response(),
     }
 }

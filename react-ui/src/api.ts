@@ -1,5 +1,6 @@
 import { 
   LogEntry, 
+  LogEntrySummary,
   Filters, 
   BulkRedactRequest, 
   EntryRedactRequest, 
@@ -35,7 +36,7 @@ class ApiService {
     return response.json();
   }
 
-  // Get entries with filters
+  // Get entries with filters (full data)
   async getEntries(filters: Filters = {}): Promise<LogEntry[]> {
     const params = new URLSearchParams();
     
@@ -48,6 +49,21 @@ class ApiService {
     const url = queryString ? `/api/entries?${queryString}` : '/api/entries';
     
     return this.get<LogEntry[]>(url);
+  }
+
+  // Get entry summaries with filters (lightweight, for index page)
+  async getEntriesSummary(filters: Filters = {}): Promise<LogEntrySummary[]> {
+    const params = new URLSearchParams();
+    
+    if (filters.date) params.append('date', filters.date);
+    if (filters.host) params.append('host', filters.host);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.show_noop) params.append('show_noop', 'true');
+    
+    const queryString = params.toString();
+    const url = queryString ? `/api/entries/summary?${queryString}` : '/api/entries/summary';
+    
+    return this.get<LogEntrySummary[]>(url);
   }
 
   // Get single entry
@@ -90,8 +106,8 @@ class ApiService {
     }
   }
 
-  // Generate copy text for entry
-  getCopyText(entry: LogEntry): string {
+  // Generate copy text for entry (works with both LogEntry and LogEntrySummary)
+  getCopyText(entry: LogEntry | LogEntrySummary): string {
     if (entry.capture_type === 'Run') {
       return `prodlog run ${entry.cmd}`;
     } else {
