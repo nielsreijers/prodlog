@@ -319,6 +319,24 @@ tr.noop-row {
     background-color: #aaaaaa !important;
 }
 
+/* Hover states take precedence over row type colors */
+tbody:hover tr.error-row {
+    background-color: var(--prodlog-blue-hover) !important;
+}
+tbody:hover tr.noop-row {
+    background-color: var(--prodlog-blue-hover) !important;
+}
+
+/* Clickable rows styling */
+.clickable-row {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.clickable-row:hover {
+    background-color: var(--prodlog-blue-hover) !important;
+}
+
 /* Filter styles */
 .filters {
     background-color: var(--prodlog-background);

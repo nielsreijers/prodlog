@@ -4,7 +4,6 @@ use resources::{
     CAPTURE_TYPE_EDIT_SVG,
     CAPTURE_TYPE_RUN_SVG,
     COPY_ICON_SVG,
-    EDIT_ICON_SVG,
 };
 use crate::ui::{ resources, ProdlogUiState, format_timestamp };
 
@@ -87,7 +86,6 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                     <th style="width: 48px;"></th>
                     <th style="width: 80px;">Duration</th>
                     <th style="width: 30px;">Exit</th>
-                    <th style="width: 50px;">Log</th>
                 </tr>
             </thead>
             <tbody>
@@ -185,7 +183,8 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
             document.getElementById('filterForm').submit();
         }}
 
-        function copyButton(button, text) {{
+        function copyButton(button, text, event) {{
+            event.stopPropagation(); // Prevent row click navigation
             navigator.clipboard.writeText(text).then(() => {{
                 button.classList.add('copied');
                 button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>';
@@ -225,17 +224,11 @@ fn generate_entry(entry: &CaptureV2_4) -> String {
     let duration = entry.duration_ms;
     let exit_code = entry.exit_code;
     let uuid = entry.uuid.to_string();
-    let link = match entry.capture_type {
-        crate::model::CaptureType::Run =>
-            format!(r#"<a href="output/{}">View</a>"#, entry.uuid),
-        crate::model::CaptureType::Edit =>
-            format!(r#"<a href="diff/{}">Diff</a>"#, entry.uuid),
-    };
     let message_row = if !entry.message.is_empty() {
         format!(
-            r#"<tr class="message-row">
+            r#"<tr class="message-row clickable-row" onclick="window.location.href='/entry/{uuid}'">
                 <td colspan="2"></td>
-                <td colspan="6" class="message-row">
+                <td colspan="5" class="message-row">
                     <div>
                         <span>{}</span>
                     </div>
@@ -249,24 +242,20 @@ fn generate_entry(entry: &CaptureV2_4) -> String {
     format!(
         r#"
         <tbody>
-            <tr{row_class} class="main-row">
+            <tr{row_class} class="main-row clickable-row" onclick="window.location.href='/entry/{uuid}'">
                 <td>{entry_type}</td>
                 <td>{start_time}</td>
                 <td>{host}</td>
                 <td>{cmd}</td>
                 <td>
-                    <div class="button-group">
-                        <button class="edit-or-copy-button" onclick="copyButton(this, '{copy_text}')" title="Copy">
-                            {COPY_ICON_SVG}
-                        </button>
-                        <a href="edit/{uuid}" class="edit-or-copy-button" title="Edit command">
-                            {EDIT_ICON_SVG}
-                        </a>
-                    </div>
+                                         <div class="button-group">
+                         <button class="edit-or-copy-button" onclick="copyButton(this, '{copy_text}', event)" title="Copy">
+                             {COPY_ICON_SVG}
+                         </button>
+                     </div>
                 </td>
                 <td>{duration}ms</td>
                 <td>{exit_code}</td>
-                <td>{link}</td>
             </tr>
             {message_row}
         </tbody>"#

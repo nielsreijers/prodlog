@@ -1,7 +1,7 @@
 // TODO: refactor this later to cache the entry
 async function get_prodlog_entry() {
     const uuid = window.location.pathname.split('/').pop();        
-    return fetch(`/entry/${uuid}`)
+    return fetch(`/api/entry/${uuid}`)
         .then(async response => {
             const data = await response.json();
             if (!response.ok) {

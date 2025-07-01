@@ -36,13 +36,11 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
         .route("/prodlog-dyn.css", get(handle_prodlog_dyn_css))
         .route("/redact", get(pages::redact::handle_redact_get))
         .route("/redact", post(rest::handle_bulk_redact_post))
-        .route("/output/:uuid", get(pages::entry::output::handle_output))
-        .route("/diff/:uuid", get(pages::entry::diff::handle_diff))
         .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
-        .route("/edit/:uuid", get(pages::entry::edit::handle_edit))
-        .route("/entry/:uuid", get(rest::handle_entry_get))
-        .route("/entry", post(rest::handle_entry_post))
-        .route("/entry/redact", post(rest::handle_entry_redact_post))
+        .route("/entry/:uuid", get(pages::entry::handle_entry))
+        .route("/api/entry/:uuid", get(rest::handle_entry_get))
+        .route("/api/entry", post(rest::handle_entry_post))
+        .route("/api/entry/redact", post(rest::handle_entry_redact_post))
         .route("/static/*path", get(static_files::serve_file))
         .with_state(sink);
 
