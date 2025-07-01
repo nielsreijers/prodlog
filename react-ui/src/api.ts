@@ -1,0 +1,117 @@
+import { 
+  LogEntry, 
+  Filters, 
+  BulkRedactRequest, 
+  EntryRedactRequest, 
+  EntryUpdateRequest,
+  DiffResponse,
+  ApiResponse 
+} from './types';
+
+class ApiService {
+  private baseUrl = '';
+
+  async get<T>(url: string): Promise<T> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async post<T>(url: string, data: any): Promise<T> {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+
+  // Get entries with filters
+  async getEntries(filters: Filters = {}): Promise<LogEntry[]> {
+    const params = new URLSearchParams();
+    
+    if (filters.date) params.append('date', filters.date);
+    if (filters.host) params.append('host', filters.host);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.show_noop) params.append('show_noop', 'true');
+    
+    const queryString = params.toString();
+    const url = queryString ? `/api/entries?${queryString}` : '/api/entries';
+    
+    return this.get<LogEntry[]>(url);
+  }
+
+  // Get single entry
+  async getEntry(uuid: string): Promise<LogEntry> {
+    return this.get<LogEntry>(`/api/entry/${uuid}`);
+  }
+
+  // Update entry
+  async updateEntry(data: EntryUpdateRequest): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/api/entry', data);
+  }
+
+  // Redact password from single entry
+  async redactEntry(data: EntryRedactRequest): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/api/entry/redact', data);
+  }
+
+  // Bulk redact passwords
+  async bulkRedact(data: BulkRedactRequest): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/api/redact', data);
+  }
+
+  // Get diff content
+  async getDiffContent(uuid: string): Promise<DiffResponse> {
+    return this.get<DiffResponse>(`/diffcontent/${uuid}`);
+  }
+
+  // Copy text to clipboard
+  async copyToClipboard(text: string): Promise<void> {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+  }
+
+  // Generate copy text for entry
+  getCopyText(entry: LogEntry): string {
+    if (entry.capture_type === 'Run') {
+      return `prodlog run ${entry.cmd}`;
+    } else {
+      return entry.cmd.startsWith('sudo') 
+        ? `prodlog edit -s ${entry.filename}`
+        : `prodlog edit ${entry.filename}`;
+    }
+  }
+
+  // Format timestamp
+  formatTimestamp(timestamp: string): string {
+    return new Date(timestamp).toLocaleString();
+  }
+
+  // Format duration
+  formatDuration(start_time: string, duration_ms: number): string {
+    const start = new Date(start_time);
+    const end = new Date(start.getTime() + duration_ms);
+    return end.toLocaleString();
+  }
+}
+
+export const api = new ApiService(); 

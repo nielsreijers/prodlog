@@ -3,6 +3,7 @@ use chrono::{ DateTime, Utc };
 use tokio::sync::RwLock;
 use std::sync::Arc;
 use crate::{config::get_config, sinks::UiSource};
+use axum::response::Html;
 
 mod resources;
 mod rest;
@@ -30,18 +31,60 @@ pub async fn handle_prodlog_dyn_css() -> Response {
         .unwrap()
 }
 
+pub async fn handle_react_app() -> Html<String> {
+    // Read the React app's index.html file
+    match std::fs::read_to_string("src/ui/static/react/index.html") {
+        Ok(content) => Html(content),
+        Err(_) => {
+            // Fallback HTML if React build is not available
+            Html(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prodlog Viewer</title>
+    <style>
+        body { font-family: system-ui; padding: 2rem; text-align: center; }
+        .error { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>Prodlog Viewer</h1>
+    <div class="error">
+        <p>React UI not built yet. Please run the build script:</p>
+        <pre>./build-react.sh</pre>
+        <p>Or use the original server-side rendered UI at: <a href="/legacy/">/legacy/</a></p>
+    </div>
+</body>
+</html>
+            "#.to_string())
+        }
+    }
+}
+
 pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
     let app = Router::new()
-        .route("/", get(pages::index::handle_index))
-        .route("/prodlog-dyn.css", get(handle_prodlog_dyn_css))
-        .route("/redact", get(pages::redact::handle_redact_get))
-        .route("/redact", post(rest::handle_bulk_redact_post))
-        .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
-        .route("/entry/:uuid", get(pages::entry::handle_entry))
+        // API routes 
+        .route("/api/entries", get(rest::handle_entries_get))
         .route("/api/entry/:uuid", get(rest::handle_entry_get))
         .route("/api/entry", post(rest::handle_entry_post))
         .route("/api/entry/redact", post(rest::handle_entry_redact_post))
+        .route("/api/redact", post(rest::handle_bulk_redact_post))  // Changed to /api/redact
+        .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
+        
+        // Legacy server-side rendered UI routes
+        .route("/legacy", get(pages::index::handle_index))
+        .route("/legacy/", get(pages::index::handle_index))
+        .route("/legacy/redact", get(pages::redact::handle_redact_get))
+        .route("/legacy/entry/:uuid", get(pages::entry::handle_entry))
+        
+        // Static assets
+        .route("/prodlog-dyn.css", get(handle_prodlog_dyn_css))
         .route("/static/*path", get(static_files::serve_file))
+        .route("/assets/*path", get(static_files::serve_react_asset))
+        .route("/favicon.ico", get(static_files::serve_react_favicon))
+        
+        // React app SPA fallback - must be last to catch all other routes
+        .fallback(get(handle_react_app))
         .with_state(sink);
 
     let addr = format!("0.0.0.0:{}", port);

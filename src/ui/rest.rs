@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{ extract::{Path, State}, http::StatusCode, response::{Html, IntoResponse}, Json };
+use axum::{ extract::{Path, State, Query}, http::StatusCode, response::{Html, IntoResponse}, Json };
 use serde::Deserialize;
 use serde_json::json;
 use similar::{ ChangeTag, TextDiff };
@@ -60,6 +60,16 @@ pub async fn handle_entry_get(
     match get_entry(sink.clone(), &uuid).await {
         Ok(entry) => (StatusCode::OK, Json(entry)).into_response(),
         Err((status, message)) => (status, Json(json!({ "error": message }))).into_response(),
+    }
+}
+
+pub async fn handle_entries_get(
+    State(sink): State<ProdlogUiState>,
+    Query(filters): Query<Filters>,
+) -> impl IntoResponse {
+    match sink.read().await.get_entries(&filters) {
+        Ok(entries) => (StatusCode::OK, Json(entries)).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", err) }))).into_response(),
     }
 }
 
