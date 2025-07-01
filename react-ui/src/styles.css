@@ -6,7 +6,7 @@
     --prodlog-text-secondary: #4E4B66;
     --prodlog-border: #E5E7EB;
     --prodlog-hover: #F5F5F5;
-    --prodlog-dyn-background: #FFFFFF;
+    /* --prodlog-dyn-background is defined by /prodlog-dyn.css */
 }
 
 /* Base styles */
