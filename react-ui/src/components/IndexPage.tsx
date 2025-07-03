@@ -115,6 +115,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   // Local state for input values to prevent focus loss
   const [localHost, setLocalHost] = useState(filters.host || '');
   const [localSearch, setLocalSearch] = useState(filters.search || '');
+  const [localDate, setLocalDate] = useState(filters.date || '');
   
   // Use ref to track current filters without causing re-renders
   const filtersRef = useRef(filters);
@@ -124,14 +125,28 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   useEffect(() => {
     setLocalHost(filters.host || '');
     setLocalSearch(filters.search || '');
-  }, [filters.host, filters.search]);
+    setLocalDate(filters.date || '');
+  }, [filters.host, filters.search, filters.date]);
+  
+  // Helper function to validate yyyy-mm-dd format
+  const formatDateForAPI = (dateStr: string): string | undefined => {
+    if (!dateStr) return undefined;
+    
+    // Accept yyyy-mm-dd format
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
+      const [year, month, day] = dateStr.split('-');
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    
+    return undefined;
+  };
   
   // Debounced effect to search without updating URL
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       // Call API directly without updating URL
       const searchFilters = {
-        date: filtersRef.current.date,
+        date: formatDateForAPI(localDate),
         show_noop: filtersRef.current.show_noop,
         host: localHost || undefined,
         search: localSearch || undefined
@@ -155,13 +170,13 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
     }, 300); // 300ms delay
     
     return () => clearTimeout(timeoutId);
-  }, [localHost, localSearch]);
+  }, [localHost, localSearch, localDate]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Force immediate update on form submit
     onFiltersChange({
-      date: filtersRef.current.date,
+      date: formatDateForAPI(localDate),
       show_noop: filtersRef.current.show_noop,
       host: localHost || undefined,
       search: localSearch || undefined
@@ -175,6 +190,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   const clearFilters = () => {
     setLocalHost('');
     setLocalSearch('');
+    setLocalDate('');
     onFiltersChange({});
   };
 
@@ -182,9 +198,10 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
     <div className="filters">
       <form onSubmit={handleSubmit}>
         <input
-          type="date"
-          value={filters.date || ''}
-          onChange={(e) => onFiltersChange({ ...filters, date: e.target.value || undefined })}
+          type="text"
+          placeholder="Date (yyyy-mm-dd)"
+          value={localDate}
+          onChange={(e) => setLocalDate(e.target.value)}
         />
         <input
           type="text"

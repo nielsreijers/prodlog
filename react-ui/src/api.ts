@@ -123,14 +123,14 @@ class ApiService {
     const [date, time] = iso.split('T');
     const [year, month, day] = date.split('-');
     const [hours, minutes, seconds] = time.split(':');
-    return `${day}-${month}-${year} ${hours}:${minutes}:${seconds.split('.')[0]} UTC`;
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds.split('.')[0]} UTC`;
   }
 
-  // Format duration
+    // Format duration
   formatDuration(start_time: string, duration_ms: number): string {
     const start = new Date(start_time);
     const end = new Date(start.getTime() + duration_ms);
-    return end.toLocaleString();
+    return this.formatTimestamp(end.toISOString());
   }
 }
 
