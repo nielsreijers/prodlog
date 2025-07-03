@@ -119,7 +119,11 @@ class ApiService {
 
   // Format timestamp
   formatTimestamp(timestamp: string): string {
-    return new Date(timestamp).toLocaleString();
+    const iso = new Date(timestamp).toISOString(); // "2023-12-25T14:30:45.123Z"
+    const [date, time] = iso.split('T');
+    const [year, month, day] = date.split('-');
+    const [hours, minutes, seconds] = time.split(':');
+    return `${day}-${month}-${year} ${hours}:${minutes}:${seconds.split('.')[0]} UTC`;
   }
 
   // Format duration
