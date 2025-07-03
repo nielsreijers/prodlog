@@ -28,11 +28,21 @@ The system captures:
 
 ### Building from Source
 
-Make sure [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) is installed.
+Make sure [cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) and [Node.js](https://nodejs.org/) are installed.
 
 ```bash
-cargo install --git https://github.com/nielsreijers/prodlog
+# Clone the repository
+git clone https://github.com/nielsreijers/prodlog.git
+cd prodlog
+
+# Build the React UI
+./build-react.sh
+
+# Install the binary
+cargo install --path .
 ```
+
+The React UI is embedded into the binary at compile time, so you only need to build it once. After installation, `cargo install` will work without requiring Node.js on the target system.
 
 ### Remote Script Setup
 

@@ -32,10 +32,10 @@ pub async fn handle_prodlog_dyn_css() -> Response {
 }
 
 pub async fn handle_react_app() -> Html<String> {
-    // Read the React app's index.html file
-    match std::fs::read_to_string("src/ui/static/react/index.html") {
-        Ok(content) => Html(content),
-        Err(_) => {
+    // Read the React app's index.html file from embedded directory
+    match static_files::get_react_index_html() {
+        Some(content) => Html(content),
+        None => {
             // Fallback HTML if React build is not available
             Html(r#"
 <!DOCTYPE html>
