@@ -143,13 +143,27 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   
   // Debounced effect to search without updating URL
   useEffect(() => {
+    // Check if local values differ from current URL filters
+    const currentFilters = filtersRef.current;
+    const localFilters = {
+      date: formatDateForAPI(localDate),
+      host: localHost || undefined,
+      search: localSearch || undefined
+    };
+    
+    // Only search if local values are different from URL
+    const hasChanged = 
+      localFilters.date !== currentFilters.date ||
+      localFilters.host !== currentFilters.host ||
+      localFilters.search !== currentFilters.search;
+    
+    if (!hasChanged) return;
+    
     const timeoutId = setTimeout(() => {
       // Call API directly without updating URL
       const searchFilters = {
-        date: formatDateForAPI(localDate),
-        show_noop: filtersRef.current.show_noop,
-        host: localHost || undefined,
-        search: localSearch || undefined
+        ...localFilters,
+        show_noop: currentFilters.show_noop,
       };
       
       // Trigger search without URL update
@@ -157,7 +171,6 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
         try {
           const data = await api.getEntriesSummary(searchFilters);
           data.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-          // We need to call a callback to update entries
           if (onSearchResults) {
             onSearchResults(data);
           }
@@ -262,7 +275,7 @@ export default function IndexPage() {
     setSearchParams(params);
   };
 
-  // Load entries
+  // Load entries when URL changes (bookmarks, back/forward navigation)
   useEffect(() => {
     const loadEntries = async () => {
       try {
