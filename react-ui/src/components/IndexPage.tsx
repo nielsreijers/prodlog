@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogEntrySummary, Filters } from '../types';
 import { api } from '../api';
@@ -106,14 +106,66 @@ function EntryRow({ entry, onClick }: EntryRowProps) {
 interface FilterFormProps {
   filters: Filters;
   onFiltersChange: (filters: Filters) => void;
+  onSearchResults: (entries: LogEntrySummary[]) => void;
 }
 
-function FilterForm({ filters, onFiltersChange }: FilterFormProps) {
+function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormProps) {
   const navigate = useNavigate();
+  
+  // Local state for input values to prevent focus loss
+  const [localHost, setLocalHost] = useState(filters.host || '');
+  const [localSearch, setLocalSearch] = useState(filters.search || '');
+  
+  // Use ref to track current filters without causing re-renders
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  
+  // Update local state when filters change from outside (e.g., URL changes)
+  useEffect(() => {
+    setLocalHost(filters.host || '');
+    setLocalSearch(filters.search || '');
+  }, [filters.host, filters.search]);
+  
+  // Debounced effect to search without updating URL
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // Call API directly without updating URL
+      const searchFilters = {
+        date: filtersRef.current.date,
+        show_noop: filtersRef.current.show_noop,
+        host: localHost || undefined,
+        search: localSearch || undefined
+      };
+      
+      // Trigger search without URL update
+      const loadEntries = async () => {
+        try {
+          const data = await api.getEntriesSummary(searchFilters);
+          data.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+          // We need to call a callback to update entries
+          if (onSearchResults) {
+            onSearchResults(data);
+          }
+        } catch (err) {
+          console.error('Search failed:', err);
+        }
+      };
+      
+      loadEntries();
+    }, 300); // 300ms delay
+    
+    return () => clearTimeout(timeoutId);
+  }, [localHost, localSearch]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // URL will be updated by the effect in IndexPage
+    // Force immediate update on form submit
+    onFiltersChange({
+      date: filtersRef.current.date,
+      show_noop: filtersRef.current.show_noop,
+      host: localHost || undefined,
+      search: localSearch || undefined
+    });
   };
 
   const handleNoopToggle = (checked: boolean) => {
@@ -121,6 +173,8 @@ function FilterForm({ filters, onFiltersChange }: FilterFormProps) {
   };
 
   const clearFilters = () => {
+    setLocalHost('');
+    setLocalSearch('');
     onFiltersChange({});
   };
 
@@ -135,14 +189,14 @@ function FilterForm({ filters, onFiltersChange }: FilterFormProps) {
         <input
           type="text"
           placeholder="Hostname"
-          value={filters.host || ''}
-          onChange={(e) => onFiltersChange({ ...filters, host: e.target.value || undefined })}
+          value={localHost}
+          onChange={(e) => setLocalHost(e.target.value)}
         />
         <input
           type="text"
           placeholder="Command or message"
-          value={filters.search || ''}
-          onChange={(e) => onFiltersChange({ ...filters, search: e.target.value || undefined })}
+          value={localSearch}
+          onChange={(e) => setLocalSearch(e.target.value)}
         />
         <label className="switch">
           <input
@@ -242,7 +296,7 @@ export default function IndexPage() {
         <h1>Prodlog Viewer</h1>
       </div>
       
-      <FilterForm filters={filters} onFiltersChange={updateFilters} />
+      <FilterForm filters={filters} onFiltersChange={updateFilters} onSearchResults={setEntries} />
       
       <table>
         <thead>
