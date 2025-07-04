@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{ extract::{Path, State, Query}, http::StatusCode, response::{Html, IntoResponse}, Json };
+use axum::{ extract::{Path, State, Query}, http::StatusCode, response::IntoResponse, Json };
 use serde::Deserialize;
 use serde_json::json;
 use similar::{ ChangeTag, TextDiff };
@@ -101,8 +101,8 @@ pub async fn handle_entry_post(
     };
 
     match sink.write().await.add_entry(&entry) {
-        Ok(_) => (StatusCode::OK, Html(String::from("Success"))).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("Error saving entry: {}", err))).into_response(),
+        Ok(_) => (StatusCode::OK, Json(json!({ "message": "Entry updated successfully" }))).into_response(),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error saving entry: {}", err) }))).into_response(),
     }
 }
 
