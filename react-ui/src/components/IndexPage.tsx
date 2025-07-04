@@ -170,7 +170,6 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
       const loadEntries = async () => {
         try {
           const data = await api.getEntriesSummary(searchFilters);
-          data.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
           if (onSearchResults) {
             onSearchResults(data);
           }
@@ -281,8 +280,6 @@ export default function IndexPage() {
       try {
         setLoading(true);
         const data = await api.getEntriesSummary(filters);
-        // Sort entries by start time, newest first
-        data.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
         setEntries(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load entries');
