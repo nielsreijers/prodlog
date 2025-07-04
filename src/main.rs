@@ -79,7 +79,7 @@ fn prodlog_panic(msg: &str) -> ! {
     std::process::exit(1);
 }
 
-fn print_prodlog_warning(msg: &str) {
+pub fn print_prodlog_warning(msg: &str) {
     prodlog_print(msg, color::Yellow);
 }
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogEntrySummary, Filters } from '../types';
 import { api } from '../api';
+import DateRangePicker from './DateRangePicker';
 
 const CopyIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -115,7 +116,10 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   // Local state for input values to prevent focus loss
   const [localHost, setLocalHost] = useState(filters.host || '');
   const [localSearch, setLocalSearch] = useState(filters.search || '');
-  const [localDate, setLocalDate] = useState(filters.date || '');
+  const [localDateRange, setLocalDateRange] = useState({
+    from: filters.date_from || '',
+    to: filters.date_to || ''
+  });
   
   // Use ref to track current filters without causing re-renders
   const filtersRef = useRef(filters);
@@ -125,44 +129,33 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   useEffect(() => {
     setLocalHost(filters.host || '');
     setLocalSearch(filters.search || '');
-    setLocalDate(filters.date || '');
-  }, [filters.host, filters.search, filters.date]);
-  
-  // Helper function to validate yyyy-mm-dd format
-  const formatDateForAPI = (dateStr: string): string | undefined => {
-    if (!dateStr) return undefined;
-    
-    // Accept yyyy-mm-dd format
-    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
-      const [year, month, day] = dateStr.split('-');
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-    
-    return undefined;
-  };
+    setLocalDateRange({
+      from: filters.date_from || '',
+      to: filters.date_to || ''
+    });
+  }, [filters.host, filters.search, filters.date_from, filters.date_to]);
   
   // Debounced effect to search without updating URL
   useEffect(() => {
     // Check if local values differ from current URL filters
     const currentFilters = filtersRef.current;
-    const localFilters = {
-      date: formatDateForAPI(localDate),
-      host: localHost || undefined,
-      search: localSearch || undefined
-    };
     
     // Only search if local values are different from URL
     const hasChanged = 
-      localFilters.date !== currentFilters.date ||
-      localFilters.host !== currentFilters.host ||
-      localFilters.search !== currentFilters.search;
+      localDateRange.from !== currentFilters.date_from ||
+      localDateRange.to !== currentFilters.date_to ||
+      localHost !== currentFilters.host ||
+      localSearch !== currentFilters.search;
     
     if (!hasChanged) return;
     
     const timeoutId = setTimeout(() => {
       // Call API directly without updating URL
       const searchFilters = {
-        ...localFilters,
+        date_from: localDateRange.from || undefined,
+        date_to: localDateRange.to || undefined,
+        host: localHost || undefined,
+        search: localSearch || undefined,
         show_noop: currentFilters.show_noop,
       };
       
@@ -182,13 +175,14 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
     }, 300); // 300ms delay
     
     return () => clearTimeout(timeoutId);
-  }, [localHost, localSearch, localDate]);
+  }, [localHost, localSearch, localDateRange.from, localDateRange.to]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Force immediate update on form submit
     onFiltersChange({
-      date: formatDateForAPI(localDate),
+      date_from: localDateRange.from || undefined,
+      date_to: localDateRange.to || undefined,
       show_noop: filtersRef.current.show_noop,
       host: localHost || undefined,
       search: localSearch || undefined
@@ -202,18 +196,16 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   const clearFilters = () => {
     setLocalHost('');
     setLocalSearch('');
-    setLocalDate('');
+    setLocalDateRange({ from: '', to: '' });
     onFiltersChange({});
   };
 
   return (
     <div className="filters">
       <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Date (yyyy-mm-dd)"
-          value={localDate}
-          onChange={(e) => setLocalDate(e.target.value)}
+        <DateRangePicker
+          value={localDateRange}
+          onChange={(range) => setLocalDateRange(range)}
         />
         <input
           type="text"
@@ -257,7 +249,8 @@ export default function IndexPage() {
   
   // Parse filters from URL
   const filters: Filters = {
-    date: searchParams.get('date') || undefined,
+    date_from: searchParams.get('date_from') || undefined,
+    date_to: searchParams.get('date_to') || undefined,
     host: searchParams.get('host') || undefined,
     search: searchParams.get('search') || undefined,
     show_noop: searchParams.get('show_noop') === 'true' || undefined,
@@ -266,7 +259,8 @@ export default function IndexPage() {
   // Update URL when filters change
   const updateFilters = (newFilters: Filters) => {
     const params = new URLSearchParams();
-    if (newFilters.date) params.set('date', newFilters.date);
+    if (newFilters.date_from) params.set('date_from', newFilters.date_from);
+    if (newFilters.date_to) params.set('date_to', newFilters.date_to);
     if (newFilters.host) params.set('host', newFilters.host);
     if (newFilters.search) params.set('search', newFilters.search);
     if (newFilters.show_noop) params.set('show_noop', 'true');

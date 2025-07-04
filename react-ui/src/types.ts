@@ -39,7 +39,8 @@ export interface LogEntrySummary {
 }
 
 export interface Filters {
-  date?: string;
+  date_from?: string;
+  date_to?: string;
   host?: string;
   search?: string;
   show_noop?: boolean;

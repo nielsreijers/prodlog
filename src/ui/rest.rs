@@ -7,7 +7,7 @@ use similar::{ ChangeTag, TextDiff };
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry};
+use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
 
 use super::ProdlogUiState;
 
@@ -46,7 +46,9 @@ pub async fn get_entry(
             return Err((StatusCode::NOT_FOUND, "Entry not found".to_string()));
         }
         Err(err) => {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error loading entry: {}", err)));
+            let error_msg = format!("Error loading entry {}: {}", uuid, err);
+            print_prodlog_warning(&error_msg);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, error_msg));
         }
     };
 
@@ -69,7 +71,11 @@ pub async fn handle_entries_get(
 ) -> impl IntoResponse {
     match sink.read().await.get_entries(&filters) {
         Ok(entries) => (StatusCode::OK, Json(entries)).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", err) }))).into_response(),
+        Err(err) => {
+            let error_msg = format!("Error loading entries: {}", err);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        },
     }
 }
 
@@ -83,7 +89,11 @@ pub async fn handle_entries_summary_get(
             let summaries: Vec<CaptureV2_4Summary> = entries.iter().map(|e| e.into()).collect();
             (StatusCode::OK, Json(summaries)).into_response()
         },
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", err) }))).into_response(),
+        Err(err) => {
+            let error_msg = format!("Error loading entries summary: {}", err);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        },
     }
 }
 
@@ -102,7 +112,11 @@ pub async fn handle_entry_post(
 
     match sink.write().await.add_entry(&entry) {
         Ok(_) => (StatusCode::OK, Json(json!({ "message": "Entry updated successfully" }))).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error saving entry: {}", err) }))).into_response(),
+        Err(err) => {
+            let error_msg = format!("Error saving entry {}: {}", entry.uuid, err);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        },
     }
 }
 
@@ -166,7 +180,11 @@ pub async fn handle_entry_redact_post(
     // Save the redacted entry
     match sink.write().await.add_entry(&entry) {
         Ok(_) => (StatusCode::OK, Json(json!({ "message": "Password redacted successfully" }))).into_response(),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error saving entry: {}", err) }))).into_response(),
+        Err(err) => {
+            let error_msg = format!("Error saving redacted entry {}: {}", entry.uuid, err);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        },
     }
 }
 
@@ -192,7 +210,11 @@ pub async fn handle_bulk_redact_post(
     // Get all entries
     let entries = match sink.read().await.get_entries(&Filters::default()) {
         Ok(entries) => entries,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("Error loading entries: {}", e) }))).into_response(),
+        Err(e) => {
+            let error_msg = format!("Error loading entries for bulk redaction: {}", e);
+            print_prodlog_warning(&error_msg);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response();
+        }
     };
 
     let mut redacted_count = 0;
@@ -210,8 +232,10 @@ pub async fn handle_bulk_redact_post(
             match sink.write().await.add_entry(&modified_entry) {
                 Ok(_) => redacted_count += 1,
                 Err(e) => {
+                    let error_msg = format!("Error saving redacted entry {}: {}", modified_entry.uuid, e);
+                    print_prodlog_warning(&error_msg);
                     return (StatusCode::INTERNAL_SERVER_ERROR, 
-                        Json(json!({ "error": format!("Error saving redacted entry {}: {}", modified_entry.uuid, e) }))).into_response();
+                        Json(json!({ "error": error_msg }))).into_response();
                 }
             }
         }

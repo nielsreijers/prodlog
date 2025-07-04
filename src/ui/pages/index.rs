@@ -17,7 +17,8 @@ fn parse_cookies(headers: &HeaderMap) -> Filters {
                 if parts.len() == 2 {
                     let (key, value) = (parts[0], parts[1]);
                     match key {
-                        "prodlog_date" => filters.date = Some(value.to_string()),
+                        "prodlog_date_from" => filters.date_from = Some(value.to_string()),
+                        "prodlog_date_to" => filters.date_to = Some(value.to_string()),
                         "prodlog_host" => filters.host = Some(value.to_string()),
                         "prodlog_search" => filters.search = Some(value.to_string()),
                         "prodlog_show_noop" => filters.show_noop = Some(value == "true"),
@@ -33,7 +34,8 @@ fn parse_cookies(headers: &HeaderMap) -> Filters {
 
 fn merge_filters(url_filters: &Filters, cookie_filters: &Filters) -> Filters {
     Filters {
-        date: url_filters.date.clone().or(cookie_filters.date.clone()),
+        date_from: url_filters.date_from.clone().or(cookie_filters.date_from.clone()),
+        date_to: url_filters.date_to.clone().or(cookie_filters.date_to.clone()),
         host: url_filters.host.clone().or(cookie_filters.host.clone()),
         search: url_filters.search.clone().or(cookie_filters.search.clone()),
         show_noop: url_filters.show_noop.or(cookie_filters.show_noop),
@@ -41,7 +43,8 @@ fn merge_filters(url_filters: &Filters, cookie_filters: &Filters) -> Filters {
 }
 
 fn generate_index(table_rows: &str, filters: &Filters) -> String {
-    let date_filter = filters.date.as_deref().unwrap_or("");
+    let date_from_filter = filters.date_from.as_deref().unwrap_or("");
+    let date_to_filter = filters.date_to.as_deref().unwrap_or("");
     let host_filter = filters.host.as_deref().unwrap_or("");
     let search_filter = filters.search.as_deref().unwrap_or("");
     let noop_filter = if filters.show_noop.unwrap_or(false) { "checked" } else { "" };
@@ -61,7 +64,8 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
         </div>
         <div class="filters">
             <form method="get" id="filterForm">
-                <input type="date" name="date" id="dateFilter" value="{date_filter}">
+                <input type="date" name="date_from" id="dateFromFilter" value="{date_from_filter}" placeholder="From date">
+                <input type="date" name="date_to" id="dateToFilter" value="{date_to_filter}" placeholder="To date">
                 <input type="text" name="host" id="hostFilter" placeholder="Hostname" value="{host_filter}">
                 <input type="text" name="search" id="searchFilter" placeholder="Command or message" value="{search_filter}">
                 <label class="switch">
@@ -112,17 +116,24 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 
         function saveFilters() {{
             const filters = {{
-                date: document.getElementById('dateFilter').value,
+                date_from: document.getElementById('dateFromFilter').value,
+                date_to: document.getElementById('dateToFilter').value,
                 host: document.getElementById('hostFilter').value,
                 search: document.getElementById('searchFilter').value,
                 show_noop: document.getElementById('noopFilter').checked
             }};
             
             // Set cookies for each filter
-            if (filters.date) {{
-                document.cookie = `prodlog_date=${{encodeURIComponent(filters.date)}}; path=/; max-age=86400`;
+            if (filters.date_from) {{
+                document.cookie = `prodlog_date_from=${{encodeURIComponent(filters.date_from)}}; path=/; max-age=86400`;
             }} else {{
-                document.cookie = 'prodlog_date=; path=/; max-age=0';
+                document.cookie = 'prodlog_date_from=; path=/; max-age=0';
+            }}
+            
+            if (filters.date_to) {{
+                document.cookie = `prodlog_date_to=${{encodeURIComponent(filters.date_to)}}; path=/; max-age=86400`;
+            }} else {{
+                document.cookie = 'prodlog_date_to=; path=/; max-age=0';
             }}
             
             if (filters.host) {{
@@ -160,7 +171,8 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 return acc;
             }}, {{}});
             
-            if (cookies.prodlog_date) document.getElementById('dateFilter').value = cookies.prodlog_date;
+            if (cookies.prodlog_date_from) document.getElementById('dateFromFilter').value = cookies.prodlog_date_from;
+            if (cookies.prodlog_date_to) document.getElementById('dateToFilter').value = cookies.prodlog_date_to;
             if (cookies.prodlog_host) document.getElementById('hostFilter').value = cookies.prodlog_host;
             if (cookies.prodlog_search) document.getElementById('searchFilter').value = cookies.prodlog_search;
             if (cookies.prodlog_show_noop === 'true') document.getElementById('noopFilter').checked = true;
@@ -168,13 +180,15 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
 
         function clearFilters() {{
             // Clear form fields
-            document.getElementById('dateFilter').value = '';
+            document.getElementById('dateFromFilter').value = '';
+            document.getElementById('dateToFilter').value = '';
             document.getElementById('hostFilter').value = '';
             document.getElementById('searchFilter').value = '';
             document.getElementById('noopFilter').checked = false;
             
             // Clear cookies
-            document.cookie = 'prodlog_date=; path=/; max-age=0';
+            document.cookie = 'prodlog_date_from=; path=/; max-age=0';
+            document.cookie = 'prodlog_date_to=; path=/; max-age=0';
             document.cookie = 'prodlog_host=; path=/; max-age=0';
             document.cookie = 'prodlog_search=; path=/; max-age=0';
             document.cookie = 'prodlog_show_noop=; path=/; max-age=0';

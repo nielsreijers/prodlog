@@ -14,7 +14,8 @@ pub trait Sink: Send + Sync {
 
 #[derive(Deserialize, Debug, Default)]
 pub struct Filters {
-    pub date: Option<String>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
     pub host: Option<String>,
     pub search: Option<String>,
     pub show_noop: Option<bool>,

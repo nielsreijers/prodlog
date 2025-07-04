@@ -69,9 +69,17 @@ impl UiSource for JsonSink {
             let mut filtered_entries = Vec::new();
         
         for entry in data.entries.into_iter() {
-            // Apply date, host, and command filters
-            if let Some(date) = &filters.date {
-                if !entry.start_time.to_rfc3339().starts_with(date) {
+            // Apply date range filters
+            if let Some(date_from) = &filters.date_from {
+                let from_time = format!("{}T00:00:00Z", date_from);
+                if entry.start_time.to_rfc3339() < from_time {
+                    continue;
+                }
+            }
+            
+            if let Some(date_to) = &filters.date_to {
+                let to_time = format!("{}T23:59:59Z", date_to);
+                if entry.start_time.to_rfc3339() > to_time {
                     continue;
                 }
             }

@@ -40,7 +40,8 @@ class ApiService {
   async getEntries(filters: Filters = {}): Promise<LogEntry[]> {
     const params = new URLSearchParams();
     
-    if (filters.date) params.append('date', filters.date);
+    if (filters.date_from) params.append('date_from', filters.date_from);
+    if (filters.date_to) params.append('date_to', filters.date_to);
     if (filters.host) params.append('host', filters.host);
     if (filters.search) params.append('search', filters.search);
     if (filters.show_noop) params.append('show_noop', 'true');
@@ -55,7 +56,8 @@ class ApiService {
   async getEntriesSummary(filters: Filters = {}): Promise<LogEntrySummary[]> {
     const params = new URLSearchParams();
     
-    if (filters.date) params.append('date', filters.date);
+    if (filters.date_from) params.append('date_from', filters.date_from);
+    if (filters.date_to) params.append('date_to', filters.date_to);
     if (filters.host) params.append('host', filters.host);
     if (filters.search) params.append('search', filters.search);
     if (filters.show_noop) params.append('show_noop', 'true');

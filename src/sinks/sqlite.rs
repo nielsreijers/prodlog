@@ -230,9 +230,14 @@ impl UiSource for SqliteSink {
         let mut query = String::from("SELECT * FROM prodlog_entries WHERE 1=1");
         let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-        if let Some(date) = &filters.date {
-            query.push_str(" AND start_time LIKE ?");
-            params.push(Box::new(format!("{}%", date)));
+        if let Some(date_from) = &filters.date_from {
+            query.push_str(" AND start_time >= ?");
+            params.push(Box::new(format!("{}T00:00:00", date_from)));
+        }
+
+        if let Some(date_to) = &filters.date_to {
+            query.push_str(" AND start_time <= ?");
+            params.push(Box::new(format!("{}T23:59:59", date_to)));
         }
 
         if let Some(host) = &filters.host {
