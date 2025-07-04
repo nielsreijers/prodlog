@@ -515,12 +515,9 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
 
 fn get_sinks(prodlog_dir: &PathBuf) -> Vec<Box<dyn sinks::Sink>> {
     fs::create_dir_all(prodlog_dir).expect("Failed to create directory");
-    let json_file = prodlog_dir.join("prodlog.json");
     let sqlite_file = prodlog_dir.join("prodlog.sqlite");
 
     vec![
-        Box::new(sinks::obsidian::ObsidianSink::new(&prodlog_dir)),
-        Box::new(sinks::json::JsonSink::new(&json_file)),
         Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file))
     ]
 }
@@ -611,14 +608,13 @@ fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<()
     let source_sink: Box<dyn sinks::UiSource> = match
         import_file.extension().unwrap_or_default().to_str().unwrap_or_default()
     {
-        "json" => { Box::new(sinks::json::JsonSink::new(&import_file)) }
         "sqlite" => {
             // TODO: copy to tmp file so we don't modify the original if the schema changed.
             Box::new(sinks::sqlite::SqliteSink::new(&import_file))
         }
         _ => {
             prodlog_panic(
-                &format!("Error: Import file must be .json or .sqlite, got {:?}", import_file)
+                &format!("Error: Import file must be .sqlite, got {:?}", import_file)
             );
         }
     };
@@ -663,7 +659,6 @@ async fn main() {
     // Start the UI in a separate task
     let ui_port = get_config().port;
     tokio::spawn(async move {
-        // let sink = Arc::new(sinks::json::JsonSink::new(ui_dir));
         let sqlite_file = prodlog_dir.join("prodlog.sqlite");
         let sink: Arc<RwLock<Box<dyn UiSource>>> = Arc::new(
             RwLock::new(Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file)))

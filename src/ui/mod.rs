@@ -1,20 +1,13 @@
 use axum::{ routing::{get, post}, Router, response::Response, http::StatusCode };
-use chrono::{ DateTime, Utc };
 use tokio::sync::RwLock;
 use std::sync::Arc;
 use crate::{config::get_config, sinks::UiSource};
 use axum::response::Html;
 
-mod resources;
 mod rest;
-mod pages;
 mod static_files;
 
 type ProdlogUiState = Arc<RwLock<Box<dyn UiSource>>>;
-
-fn format_timestamp(timestamp: &DateTime<Utc>) -> String {
-    timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()
-}
 
 pub async fn handle_prodlog_dyn_css() -> Response {
     let background = get_config().ui_background.clone();
@@ -52,7 +45,6 @@ pub async fn handle_react_app() -> Html<String> {
     <div class="error">
         <p>React UI not built yet. Please run the build script:</p>
         <pre>./build-react.sh</pre>
-        <p>Or use the original server-side rendered UI at: <a href="/legacy/">/legacy/</a></p>
     </div>
 </body>
 </html>
@@ -72,11 +64,7 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
         .route("/api/redact", post(rest::handle_bulk_redact_post))  // Changed to /api/redact
         .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
         
-        // Legacy server-side rendered UI routes
-        .route("/legacy", get(pages::index::handle_index))
-        .route("/legacy/", get(pages::index::handle_index))
-        .route("/legacy/redact", get(pages::redact::handle_redact_get))
-        .route("/legacy/entry/:uuid", get(pages::entry::handle_entry))
+
         
         // Static assets
         .route("/prodlog-dyn.css", get(handle_prodlog_dyn_css))
