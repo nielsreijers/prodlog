@@ -96,6 +96,48 @@ impl UiSource for JsonSink {
                     continue;
                 }
             }
+            
+            if let Some(content) = &filters.search_content {
+                let search_term = content.to_lowercase();
+                let mut found = false;
+                
+                // Search in cmd and message
+                if entry.cmd.to_lowercase().contains(&search_term) || 
+                   entry.message.to_lowercase().contains(&search_term) {
+                    found = true;
+                }
+                
+                // Search in captured output
+                if !found {
+                    if let Ok(output_text) = String::from_utf8(entry.captured_output.clone()) {
+                        if output_text.to_lowercase().contains(&search_term) {
+                            found = true;
+                        }
+                    }
+                }
+                
+                // Search in original content
+                if !found {
+                    if let Ok(orig_text) = String::from_utf8(entry.original_content.clone()) {
+                        if orig_text.to_lowercase().contains(&search_term) {
+                            found = true;
+                        }
+                    }
+                }
+                
+                // Search in edited content
+                if !found {
+                    if let Ok(edited_text) = String::from_utf8(entry.edited_content.clone()) {
+                        if edited_text.to_lowercase().contains(&search_term) {
+                            found = true;
+                        }
+                    }
+                }
+                
+                if !found {
+                    continue;
+                }
+            }
 
             if let Some(true) = &filters.show_noop {
                 // Don't filter out no-op entries

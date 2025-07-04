@@ -21,6 +21,7 @@ fn parse_cookies(headers: &HeaderMap) -> Filters {
                         "prodlog_date_to" => filters.date_to = Some(value.to_string()),
                         "prodlog_host" => filters.host = Some(value.to_string()),
                         "prodlog_search" => filters.search = Some(value.to_string()),
+                        "prodlog_search_content" => filters.search_content = Some(value.to_string()),
                         "prodlog_show_noop" => filters.show_noop = Some(value == "true"),
                         _ => {}
                     }
@@ -38,6 +39,7 @@ fn merge_filters(url_filters: &Filters, cookie_filters: &Filters) -> Filters {
         date_to: url_filters.date_to.clone().or(cookie_filters.date_to.clone()),
         host: url_filters.host.clone().or(cookie_filters.host.clone()),
         search: url_filters.search.clone().or(cookie_filters.search.clone()),
+        search_content: url_filters.search_content.clone().or(cookie_filters.search_content.clone()),
         show_noop: url_filters.show_noop.or(cookie_filters.show_noop),
     }
 }
@@ -47,6 +49,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
     let date_to_filter = filters.date_to.as_deref().unwrap_or("");
     let host_filter = filters.host.as_deref().unwrap_or("");
     let search_filter = filters.search.as_deref().unwrap_or("");
+    let search_content_filter = filters.search_content.as_deref().unwrap_or("");
     let noop_filter = if filters.show_noop.unwrap_or(false) { "checked" } else { "" };
     format!(
         r#"
@@ -68,6 +71,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 <input type="date" name="date_to" id="dateToFilter" value="{date_to_filter}" placeholder="To date">
                 <input type="text" name="host" id="hostFilter" placeholder="Hostname" value="{host_filter}">
                 <input type="text" name="search" id="searchFilter" placeholder="Command or message" value="{search_filter}">
+                <input type="text" name="search_content" id="searchContentFilter" placeholder="Search all content (slow)" value="{search_content_filter}">
                 <label class="switch">
                     <input type="checkbox" name="show_noop" id="noopFilter" value="true" {noop_filter}>
                     <span class="slider"></span>
@@ -120,6 +124,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 date_to: document.getElementById('dateToFilter').value,
                 host: document.getElementById('hostFilter').value,
                 search: document.getElementById('searchFilter').value,
+                search_content: document.getElementById('searchContentFilter').value,
                 show_noop: document.getElementById('noopFilter').checked
             }};
             
@@ -146,6 +151,12 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
                 document.cookie = `prodlog_search=${{encodeURIComponent(filters.search)}}; path=/; max-age=86400`;
             }} else {{
                 document.cookie = 'prodlog_search=; path=/; max-age=0';
+            }}
+            
+            if (filters.search_content) {{
+                document.cookie = `prodlog_search_content=${{encodeURIComponent(filters.search_content)}}; path=/; max-age=86400`;
+            }} else {{
+                document.cookie = 'prodlog_search_content=; path=/; max-age=0';
             }}
             
             if (filters.show_noop) {{
@@ -175,6 +186,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
             if (cookies.prodlog_date_to) document.getElementById('dateToFilter').value = cookies.prodlog_date_to;
             if (cookies.prodlog_host) document.getElementById('hostFilter').value = cookies.prodlog_host;
             if (cookies.prodlog_search) document.getElementById('searchFilter').value = cookies.prodlog_search;
+            if (cookies.prodlog_search_content) document.getElementById('searchContentFilter').value = cookies.prodlog_search_content;
             if (cookies.prodlog_show_noop === 'true') document.getElementById('noopFilter').checked = true;
         }}
 
@@ -184,6 +196,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
             document.getElementById('dateToFilter').value = '';
             document.getElementById('hostFilter').value = '';
             document.getElementById('searchFilter').value = '';
+            document.getElementById('searchContentFilter').value = '';
             document.getElementById('noopFilter').checked = false;
             
             // Clear cookies
@@ -191,6 +204,7 @@ fn generate_index(table_rows: &str, filters: &Filters) -> String {
             document.cookie = 'prodlog_date_to=; path=/; max-age=0';
             document.cookie = 'prodlog_host=; path=/; max-age=0';
             document.cookie = 'prodlog_search=; path=/; max-age=0';
+            document.cookie = 'prodlog_search_content=; path=/; max-age=0';
             document.cookie = 'prodlog_show_noop=; path=/; max-age=0';
             
             // Submit the form to refresh the page

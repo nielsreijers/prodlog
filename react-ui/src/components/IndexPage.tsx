@@ -116,6 +116,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   // Local state for input values to prevent focus loss
   const [localHost, setLocalHost] = useState(filters.host || '');
   const [localSearch, setLocalSearch] = useState(filters.search || '');
+  const [localSearchContent, setLocalSearchContent] = useState(filters.search_content || '');
   const [localDateRange, setLocalDateRange] = useState({
     from: filters.date_from || '',
     to: filters.date_to || ''
@@ -129,11 +130,12 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   useEffect(() => {
     setLocalHost(filters.host || '');
     setLocalSearch(filters.search || '');
+    setLocalSearchContent(filters.search_content || '');
     setLocalDateRange({
       from: filters.date_from || '',
       to: filters.date_to || ''
     });
-  }, [filters.host, filters.search, filters.date_from, filters.date_to]);
+  }, [filters.host, filters.search, filters.search_content, filters.date_from, filters.date_to]);
   
   // Debounced effect to search without updating URL
   useEffect(() => {
@@ -145,7 +147,8 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
       localDateRange.from !== currentFilters.date_from ||
       localDateRange.to !== currentFilters.date_to ||
       localHost !== currentFilters.host ||
-      localSearch !== currentFilters.search;
+      localSearch !== currentFilters.search ||
+      localSearchContent !== currentFilters.search_content;
     
     if (!hasChanged) return;
     
@@ -156,6 +159,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
         date_to: localDateRange.to || undefined,
         host: localHost || undefined,
         search: localSearch || undefined,
+        search_content: localSearchContent || undefined,
         show_noop: currentFilters.show_noop,
       };
       
@@ -175,7 +179,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
     }, 300); // 300ms delay
     
     return () => clearTimeout(timeoutId);
-  }, [localHost, localSearch, localDateRange.from, localDateRange.to]);
+  }, [localHost, localSearch, localSearchContent, localDateRange.from, localDateRange.to]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,7 +189,8 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
       date_to: localDateRange.to || undefined,
       show_noop: filtersRef.current.show_noop,
       host: localHost || undefined,
-      search: localSearch || undefined
+      search: localSearch || undefined,
+      search_content: localSearchContent || undefined
     });
   };
 
@@ -196,6 +201,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   const clearFilters = () => {
     setLocalHost('');
     setLocalSearch('');
+    setLocalSearchContent('');
     setLocalDateRange({ from: '', to: '' });
     onFiltersChange({});
   };
@@ -218,6 +224,12 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
           placeholder="Command or message"
           value={localSearch}
           onChange={(e) => setLocalSearch(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Search all content (slow)"
+          value={localSearchContent}
+          onChange={(e) => setLocalSearchContent(e.target.value)}
         />
         <label className="switch">
           <input
@@ -253,6 +265,7 @@ export default function IndexPage() {
     date_to: searchParams.get('date_to') || undefined,
     host: searchParams.get('host') || undefined,
     search: searchParams.get('search') || undefined,
+    search_content: searchParams.get('search_content') || undefined,
     show_noop: searchParams.get('show_noop') === 'true' || undefined,
   };
 
@@ -263,6 +276,7 @@ export default function IndexPage() {
     if (newFilters.date_to) params.set('date_to', newFilters.date_to);
     if (newFilters.host) params.set('host', newFilters.host);
     if (newFilters.search) params.set('search', newFilters.search);
+    if (newFilters.search_content) params.set('search_content', newFilters.search_content);
     if (newFilters.show_noop) params.set('show_noop', 'true');
     
     setSearchParams(params);

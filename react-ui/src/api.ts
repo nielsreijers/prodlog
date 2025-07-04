@@ -44,6 +44,7 @@ class ApiService {
     if (filters.date_to) params.append('date_to', filters.date_to);
     if (filters.host) params.append('host', filters.host);
     if (filters.search) params.append('search', filters.search);
+    if (filters.search_content) params.append('search_content', filters.search_content);
     if (filters.show_noop) params.append('show_noop', 'true');
     
     const queryString = params.toString();
@@ -60,6 +61,7 @@ class ApiService {
     if (filters.date_to) params.append('date_to', filters.date_to);
     if (filters.host) params.append('host', filters.host);
     if (filters.search) params.append('search', filters.search);
+    if (filters.search_content) params.append('search_content', filters.search_content);
     if (filters.show_noop) params.append('show_noop', 'true');
     
     const queryString = params.toString();

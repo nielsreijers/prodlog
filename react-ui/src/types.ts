@@ -43,6 +43,7 @@ export interface Filters {
   date_to?: string;
   host?: string;
   search?: string;
+  search_content?: string;
   show_noop?: boolean;
 }
 

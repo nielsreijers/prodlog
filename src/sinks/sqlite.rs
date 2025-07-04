@@ -251,6 +251,16 @@ impl UiSource for SqliteSink {
             params.push(Box::new(format!("%{}%", command)));
         }
 
+        if let Some(content) = &filters.search_content {
+            query.push_str(" AND (cmd LIKE ? OR message LIKE ? OR CAST(output AS TEXT) LIKE ? OR CAST(original_content AS TEXT) LIKE ? OR CAST(edited_content AS TEXT) LIKE ?)");
+            let search_pattern = format!("%{}%", content);
+            params.push(Box::new(search_pattern.clone()));
+            params.push(Box::new(search_pattern.clone()));
+            params.push(Box::new(search_pattern.clone()));
+            params.push(Box::new(search_pattern.clone()));
+            params.push(Box::new(search_pattern.clone()));
+        }
+
         if let Some(true) = &filters.show_noop {
             // Don't filter out no-op entries
         } else {
