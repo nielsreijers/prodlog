@@ -564,4 +564,38 @@ input:checked + .slider:before {
 .date-range-apply:hover {
   background: var(--prodlog-blue-hover);
   border-color: var(--prodlog-blue-hover);
+}
+
+/* Diff styles */
+.diff-output { 
+  white-space: pre-wrap;
+  margin: 0;
+  padding: 1.5rem;
+  background-color: var(--prodlog-background);
+  border: 1px solid var(--prodlog-border);
+  border-radius: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.diff-del {
+  background: #ffebee;
+  color: #b71c1c;
+  padding: 0.125rem 0;
+  display: block;
+}
+
+.diff-ins {
+  background: #e8f5e9;
+  color: #1b5e20;
+  padding: 0.125rem 0;
+  display: block;
+}
+
+.diff-del span, .diff-ins span {
+  font-weight: bold;
+  margin-right: 0.5em;
+  color: inherit;
 } 

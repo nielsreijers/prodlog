@@ -2,16 +2,16 @@
 
 A terminal logging tool that captures command execution and file editing sessions on remote servers with a beautiful web interface for viewing logs.
 
-## Overview
 
 Prodlog consists of two components that work together:
 
 1. **`prodlog_record`** - A local terminal recorder that runs on your machine
 2. **`prodlog`** - A lightweight bash script that runs on remote servers to mark commands for capture
+3. vliegtuig
 
 The magic happens through special control sequences: when you run `prodlog run <command>` or `prodlog edit <file>` on a remote server, it prints special markers to stdout that are detected by the local `prodlog_record` process. All terminal output between `START CAPTURE` and `STOP CAPTURE` markers gets logged along with metadata like hostname, working directory, exit codes, and execution time.
 
-## How It Works
+## How It Works, or does it?
 
 1. Start `prodlog_record` on your local machine - it spawns a terminal session and starts a web UI
 2. SSH to your remote server (or run commands locally)
