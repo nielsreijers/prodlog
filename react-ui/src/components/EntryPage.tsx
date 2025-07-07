@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 import { LogEntry } from '../types';
 import { api } from '../api';
 
@@ -194,19 +196,54 @@ interface OutputDisplayProps {
 
 function OutputDisplay({ entry }: OutputDisplayProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
+  const terminalInstance = useRef<Terminal | null>(null);
 
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    // For now, display as plain text. In a real implementation,
-    // you'd integrate xterm.js here similar to the original
-    try {
-      const binaryString = atob(entry.captured_output);
-      terminalRef.current.textContent = binaryString;
-    } catch (error) {
-      terminalRef.current.textContent = 'Error decoding output';
+    // Initialize terminal if not already done
+    if (!terminalInstance.current) {
+      terminalInstance.current = new Terminal({
+        cols: entry.terminal_cols || 120,
+        rows: entry.terminal_rows || 40,
+        cursorBlink: true,
+        scrollback: 9999999,
+        fontSize: 14,
+        fontFamily: 'monospace',
+        convertEol: true,
+        disableStdin: true
+      });
+
+      // Don't let xterm.js handle any key events
+      terminalInstance.current.attachCustomKeyEventHandler(() => false);
+      terminalInstance.current.open(terminalRef.current);
     }
-  }, [entry.captured_output]);
+
+    try {
+      // Decode base64 to raw bytes
+      const binaryString = atob(entry.captured_output);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      // Write raw bytes to terminal
+      terminalInstance.current.write(bytes);
+    } catch (error) {
+      console.error('Error decoding output:', error);
+      if (terminalInstance.current) {
+        terminalInstance.current.write('Error decoding output');
+      }
+    }
+
+    // Cleanup function
+    return () => {
+      if (terminalInstance.current) {
+        terminalInstance.current.dispose();
+        terminalInstance.current = null;
+      }
+    };
+  }, [entry.captured_output, entry.terminal_cols, entry.terminal_rows]);
 
   return (
     <div className="section">
@@ -214,12 +251,9 @@ function OutputDisplay({ entry }: OutputDisplayProps) {
       <div 
         ref={terminalRef}
         style={{
-          fontFamily: 'monospace',
           backgroundColor: '#000',
-          color: '#fff',
           padding: '1rem',
           borderRadius: '8px',
-          whiteSpace: 'pre-wrap',
           minHeight: '200px'
         }}
       />
