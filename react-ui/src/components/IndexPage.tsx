@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogEntrySummary, Filters } from '../types';
+import { LogEntrySummary, Filters, Task } from '../types';
 import { api } from '../api';
 import DateRangePicker from './DateRangePicker';
+import { TaskManager } from './TaskManager';
+import { TaskGroup as TaskGroupComponent } from './TaskGroup';
 
 const CopyIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -28,6 +30,19 @@ const EditIcon = () => (
   <svg fill="none" stroke="currentColor" strokeWidth="1" width="16" height="16">
     <path d="M8 1h4a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V3a2 2 0 012-2z"/>
     <path d="M4 4h7 M4 7h7 M4 10h5"/>
+  </svg>
+);
+
+const ExpandedIcon = () => (
+  <svg fill="none" stroke="currentColor" width="16" height="16">
+    <path stroke-width="2" d="M2 8h12"/>
+  </svg>
+);
+
+const CollapsedIcon = () => (
+  <svg fill="none" stroke="currentColor" width="16" height="16">
+    <path stroke-width="2" d="M8 2v12"/>
+    <path stroke-width="2" d="M2 8h12"/>
   </svg>
 );
 
@@ -65,52 +80,20 @@ function CopyButton({ entry }: CopyButtonProps) {
 interface EntryRowProps {
   entry: LogEntrySummary;
   onClick: () => void;
-}
-
-function EntryRow({ entry, onClick }: EntryRowProps) {
-  const rowClass = entry.is_noop ? 'noop-row' : 
-                  entry.exit_code !== 0 ? 'error-row' : '';
-  
-  const EntryTypeIcon = entry.capture_type === 'Run' ? RunIcon : EditIcon;
-  
-  const messageRow = entry.message ? (
-    <tr className="message-row clickable-row" onClick={onClick}>
-      <td colSpan={2}></td>
-      <td colSpan={5} className="message-row">
-        <div>
-          <span>{entry.message}</span>
-        </div>
-      </td>
-    </tr>
-  ) : null;
-
-  return (
-    <tbody>
-      <tr className={`main-row clickable-row ${rowClass}`} onClick={onClick}>
-        <td><EntryTypeIcon /></td>
-        <td>{api.formatTimestamp(entry.start_time)}</td>
-        <td>{entry.host}</td>
-        <td>{entry.cmd}</td>
-        <td>
-          <div className="button-group">
-            <CopyButton entry={entry} />
-          </div>
-        </td>
-        <td>{entry.duration_ms}ms</td>
-        <td>{entry.exit_code}</td>
-      </tr>
-      {messageRow}
-    </tbody>
-  );
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onSelectionChange?: (uuid: string, isSelected: boolean) => void;
 }
 
 interface FilterFormProps {
   filters: Filters;
   onFiltersChange: (filters: Filters) => void;
   onSearchResults: (entries: LogEntrySummary[]) => void;
+  onExpandToggle: () => void;
+  allExpanded: boolean;
 }
 
-function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormProps) {
+function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle, allExpanded }: FilterFormProps) {
   const navigate = useNavigate();
   
   // Local state for input values to prevent focus loss
@@ -209,6 +192,9 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
   return (
     <div className="filters">
       <form onSubmit={handleSubmit}>
+        <button className="greybutton  filters-right" onClick={onExpandToggle}>
+          {allExpanded ? 'Collapse All' : 'Expand All'}
+        </button>
         <DateRangePicker
           value={localDateRange}
           onChange={(range) => setLocalDateRange(range)}
@@ -239,25 +225,222 @@ function FilterForm({ filters, onFiltersChange, onSearchResults }: FilterFormPro
           />
           <span className="slider"></span>
         </label>
-        <span className="switch-label">Reveal no-op entries</span>
-        <button className="bluebutton" type="submit">Filter</button>
+        <span className="switch-label">Show no-ops</span>
+        <button className="bluebutton" type="submit">Save Filter</button>
         <button className="greybutton" type="button" onClick={clearFilters}>Clear</button>
       </form>
-      <div className="filters-right">
-        <button className="bluebutton" type="button" onClick={() => navigate('/redact')}>
-          Redact Passwords
-        </button>
-      </div>
     </div>
+  );
+}
+
+interface UnifiedEntryProps {
+  entry: LogEntrySummary | Task;
+  entries?: LogEntrySummary[];
+  isTask: boolean;
+  onClick?: (entry: LogEntrySummary) => void;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onSelectionChange?: (uuid: string, isSelected: boolean) => void;
+  selectedEntries?: string[];
+  isExpanded?: boolean;
+  onExpandChange?: (expanded: boolean) => void;
+}
+
+interface SingleIndexEntryProps {
+  entry: LogEntrySummary;
+  onClick: (entry: LogEntrySummary) => void;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onSelectionChange?: (uuid: string, isSelected: boolean) => void;
+  isTaskChild?: boolean;
+}
+
+function SingleIndexEntry({
+  entry,
+  onClick,
+  isSelectMode = false,
+  isSelected = false,
+  onSelectionChange,
+  isTaskChild = false
+}: SingleIndexEntryProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    if (isSelectMode) {
+      e.stopPropagation();
+      onSelectionChange?.(entry.uuid, !isSelected);
+    } else {
+      onClick(entry);
+    }
+  };
+
+  return (
+    <tr
+      className={`
+        ${isSelected ? 'selected' : ''}
+        ${entry.is_noop ? 'noop-row' : ''}
+      `.trim()}
+      onClick={handleClick}
+    >
+      <td>
+        {entry.capture_type === 'Run' ? <RunIcon /> : <EditIcon />}
+      </td>
+      {isSelectMode && (
+        <td onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              onSelectionChange?.(entry.uuid, e.target.checked);
+            }}
+          />
+        </td>
+      )}
+      <td>
+        <div className={`entry-status ${entry.exit_code === 0 ? 'success' : 'error'}`}>
+          {entry.exit_code === 0 ? '✓' : '✗'}
+        </div>
+      </td>
+      <td className="entry-time">{api.formatTimestamp(entry.start_time)}</td>
+      <td>
+        <div className="entry-content">
+          <div className="entry-details">
+            <div className="entry-host">{entry.host}</div>
+            <div className="entry-cmd">{entry.cmd}</div>
+            {entry.message && (
+              <div className="entry-message">{entry.message}</div>
+            )}
+          </div>
+        </div>
+      </td>
+      <td>
+        <div className="button-group">
+          <CopyButton entry={entry} />
+        </div>
+      </td>
+      <td>{api.formatDuration(entry.duration_ms)}</td>
+    </tr>
+  );
+}
+
+function UnifiedEntry({ 
+  entry, 
+  entries = [], 
+  isTask,
+  onClick,
+  isSelectMode = false,
+  isSelected = false,
+  onSelectionChange,
+  selectedEntries = [],
+  isExpanded: forcedExpanded,
+  onExpandChange
+}: UnifiedEntryProps) {
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const isExpanded = forcedExpanded !== undefined ? forcedExpanded : localExpanded;
+
+  const handleExpandClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onExpandChange) {
+      onExpandChange(!isExpanded);
+    } else {
+      setLocalExpanded(!isExpanded);
+    }
+  };
+
+  if (!isTask) {
+    return (
+      <tbody>
+        <SingleIndexEntry
+          entry={entry as LogEntrySummary}
+          onClick={(entry) => onClick?.(entry)}
+          isSelectMode={isSelectMode}
+          isSelected={isSelected}
+          onSelectionChange={onSelectionChange}
+          isTaskChild={false}
+        />
+      </tbody>
+    );
+  }
+
+  const task = entry as Task;
+  const taskEntries = entries;
+  
+  // Calculate task summary info
+  const hosts = [...new Set(taskEntries.map(e => e.host))];
+  const startTime = new Date(Math.min(...taskEntries.map(e => new Date(e.start_time).getTime())));
+  const endTime = new Date(Math.max(...taskEntries.map(e => new Date(e.start_time).getTime() + e.duration_ms)));
+
+  const totalDuration = endTime.getTime() - startTime.getTime();
+  
+  // Calculate sum of individual entry durations for the summary
+  const sumOfEntryDurations = taskEntries.reduce((sum, entry) => sum + entry.duration_ms, 0);
+  
+  // Check if any entry in the task failed
+  const hasFailure = taskEntries.some(e => e.exit_code !== 0);
+
+  return (
+    <tbody className="unified-entry task-entry">
+      <tr className="main-row" onClick={handleExpandClick}>
+        <td>
+          <div className="task-expand-icon">
+            {isExpanded ? <ExpandedIcon /> : <CollapsedIcon />}
+          </div>
+        </td>
+        {isSelectMode && (
+          <td>
+            {/* Remove checkbox for task entries */}
+          </td>
+        )}
+        <td>
+          <div className={`entry-status ${hasFailure ? 'error' : 'success'}`}>
+            {hasFailure ? '✗' : '✓'}
+          </div>
+        </td>
+        <td className="entry-time">{api.formatTimestamp(startTime.toISOString())}</td>
+        <td>
+          <div className="entry-content">
+            <div className="entry-details">
+              <div className="entry-host">{hosts.join(', ')}</div>
+              <div className="entry-cmd">{task.name}</div>
+              <div className="entry-summary">
+                {taskEntries.length} entries • total duration {api.formatDuration(sumOfEntryDurations)}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div className="button-group">
+          </div>
+        </td>
+        <td>{api.formatDuration(totalDuration)}</td>
+      </tr>
+      {isExpanded && taskEntries.map(subEntry => (
+        <SingleIndexEntry
+          key={subEntry.uuid}
+          entry={subEntry}
+          onClick={(entry) => onClick?.(entry)}
+          isSelectMode={isSelectMode}
+          isSelected={selectedEntries.includes(subEntry.uuid)}
+          onSelectionChange={onSelectionChange}
+          isTaskChild={true}
+        />
+      ))}
+    </tbody>
   );
 }
 
 export default function IndexPage() {
   const [entries, setEntries] = useState<LogEntrySummary[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [showTaskManager, setShowTaskManager] = useState(false);
   const navigate = useNavigate();
+  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
+  const allTaskIds = tasks.map(task => task.id);
+  const allExpanded = allTaskIds.length > 0 && allTaskIds.every(id => expandedTasks.has(id));
   
   // Parse filters from URL
   const filters: Filters = {
@@ -282,25 +465,187 @@ export default function IndexPage() {
     setSearchParams(params);
   };
 
-  // Load entries when URL changes (bookmarks, back/forward navigation)
+  // Load entries and tasks when URL changes
   useEffect(() => {
-    const loadEntries = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
-        const data = await api.getEntriesSummary(filters);
-        setEntries(data);
+        const [entriesData, tasksData] = await Promise.all([
+          api.getEntriesSummary(filters),
+          api.getTasks()
+        ]);
+        setEntries(entriesData);
+        setTasks(tasksData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load entries');
+        setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
         setLoading(false);
       }
     };
 
-    loadEntries();
+    loadData();
   }, [searchParams]);
 
   const handleRowClick = (uuid: string) => {
     navigate(`/entry/${uuid}`);
+  };
+
+  const handleEntryClick = (entry: LogEntrySummary) => {
+    navigate(`/entry/${entry.uuid}`);
+  };
+
+  const handleSelectionChange = (uuid: string, isSelected: boolean) => {
+    setSelectedEntries(prev => 
+      isSelected ? [...prev, uuid] : prev.filter(id => id !== uuid)
+    );
+  };
+
+  const handleSelectAll = () => {
+    const allUngroupedIds = ungroupedEntries.map(e => e.uuid);
+    setSelectedEntries(prev => [...new Set([...prev, ...allUngroupedIds])]);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedEntries([]);
+  };
+
+  const toggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    if (isSelectMode) {
+      setSelectedEntries([]);
+    }
+  };
+
+  const handleTaskCreated = async () => {
+    // Reload data after task creation
+    try {
+      const [entriesData, tasksData] = await Promise.all([
+        api.getEntriesSummary(filters),
+        api.getTasks()
+      ]);
+      setEntries(entriesData);
+      setTasks(tasksData);
+      setSelectedEntries([]);
+      setShowTaskManager(false);
+    } catch (err) {
+      console.error('Error reloading data after task creation:', err);
+    }
+  };
+
+  const handleTaskUpdated = async () => {
+    // Reload data after task update
+    try {
+      const [entriesData, tasksData] = await Promise.all([
+        api.getEntriesSummary(filters),
+        api.getTasks()
+      ]);
+      setEntries(entriesData);
+      setTasks(tasksData);
+      setSelectedEntries([]);
+    } catch (err) {
+      console.error('Error reloading data after task update:', err);
+    }
+  };
+
+  // Group entries by task
+  const taskGroups: { [taskId: number]: LogEntrySummary[] } = {};
+  const ungroupedEntries: LogEntrySummary[] = [];
+
+  entries.forEach(entry => {
+    if (entry.task_id && entry.task_id > 0) {
+      if (!taskGroups[entry.task_id]) {
+        taskGroups[entry.task_id] = [];
+      }
+      taskGroups[entry.task_id].push(entry);
+    } else {
+      ungroupedEntries.push(entry);
+    }
+  });
+
+  // Sort entries within each task group by start time
+  Object.keys(taskGroups).forEach(taskId => {
+    taskGroups[Number(taskId)].sort((a, b) => 
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+  });
+
+  // Create a unified sorted list of entries and tasks
+  const createUnifiedList = () => {
+    const taskGroups: { [taskId: number]: LogEntrySummary[] } = {};
+    const ungroupedEntries: LogEntrySummary[] = [];
+
+    // First group entries by task
+    entries.forEach(entry => {
+      if (entry.task_id && entry.task_id > 0) {
+        if (!taskGroups[entry.task_id]) {
+          taskGroups[entry.task_id] = [];
+        }
+        taskGroups[entry.task_id].push(entry);
+      } else {
+        ungroupedEntries.push(entry);
+      }
+    });
+
+    // Create unified list
+    const unifiedList: Array<{
+      type: 'task' | 'entry';
+      item: Task | LogEntrySummary;
+      entries?: LogEntrySummary[];
+      timestamp: string;
+    }> = [];
+
+    // Add tasks
+    tasks.forEach(task => {
+      const taskEntries = taskGroups[task.id];
+      if (taskEntries && taskEntries.length > 0) {
+        const earliestEntry = taskGroups[task.id].reduce((earliest, entry) => {
+          return new Date(entry.start_time) < new Date(earliest.start_time) ? entry : earliest;
+        }, taskGroups[task.id][0]);
+
+        unifiedList.push({
+          type: 'task',
+          item: task,
+          entries: taskEntries,
+          timestamp: earliestEntry.start_time
+        });
+      }
+    });
+
+    // Add ungrouped entries
+    ungroupedEntries.forEach(entry => {
+      unifiedList.push({
+        type: 'entry',
+        item: entry,
+        timestamp: entry.start_time
+      });
+    });
+
+    // Sort by timestamp, newest first
+    return unifiedList.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  };
+
+  const unifiedList = createUnifiedList();
+
+  const handleExpandToggle = () => {
+    if (allExpanded) {
+      setExpandedTasks(new Set());
+    } else {
+      setExpandedTasks(new Set(allTaskIds));
+    }
+  };
+
+  const handleTaskExpand = (taskId: number, expanded: boolean) => {
+    setExpandedTasks(prev => {
+      const next = new Set(prev);
+      if (expanded) {
+        next.add(taskId);
+      } else {
+        next.delete(taskId);
+      }
+      return next;
+    });
   };
 
   if (loading) {
@@ -329,30 +674,78 @@ export default function IndexPage() {
     <div className="container">
       <div className="header">
         <h1>Prodlog Viewer</h1>
+        <div className="header-controls">
+          <div>
+            <button className={`bluebutton ${isSelectMode ? 'active' : ''}`} onClick={toggleSelectMode}>
+              {isSelectMode ? 'Cancel' : 'Task grouping'}
+            </button>
+                       
+            {isSelectMode && (
+              <>
+              <button className="greybutton" onClick={handleSelectAll}>
+                Select All
+              </button>
+              <button className="greybutton" onClick={handleDeselectAll}>
+                Deselect All
+              </button>
+              <button className="bluebutton" onClick={() => setShowTaskManager(true)} disabled={selectedEntries.length === 0}>
+                Manage Tasks ({selectedEntries.length})
+              </button>
+              </>
+            )}
+          </div>
+          <button className="bluebutton" type="button" onClick={() => navigate('/redact')}>
+            Bulk Redact Passwords
+          </button>
+        </div>
       </div>
       
-      <FilterForm filters={filters} onFiltersChange={updateFilters} onSearchResults={setEntries} />
+      <FilterForm filters={filters} onFiltersChange={updateFilters} onSearchResults={setEntries} onExpandToggle={handleExpandToggle} allExpanded={allExpanded} />
       
-      <table>
-        <thead>
-          <tr>
-            <th style={{width: '24px'}}></th>
-            <th style={{width: '190px'}}>Time</th>
-            <th style={{width: '160px'}}>Host</th>
-            <th style={{width: 'auto', whiteSpace: 'normal'}}>Command</th>
-            <th style={{width: '48px'}}></th>
-            <th style={{width: '80px'}}>Duration</th>
-            <th style={{width: '30px'}}>Exit</th>
-          </tr>
-        </thead>
-        {entries.map(entry => (
-          <EntryRow 
-            key={entry.uuid} 
-            entry={entry} 
-            onClick={() => handleRowClick(entry.uuid)}
-          />
-        ))}
-      </table>
+
+      {showTaskManager && (
+        <TaskManager
+          selectedEntries={selectedEntries}
+          entries={entries}
+          onTaskCreated={handleTaskCreated}
+          onTaskUpdated={handleTaskUpdated}
+          onClose={() => setShowTaskManager(false)}
+        />
+      )}
+
+      <div className="entries-container">
+        <table>
+          <thead>
+            <tr>
+              <th style={{width: '24px'}}></th>
+              {isSelectMode && <th style={{width: '24px'}}></th>}
+              <th style={{width: '24px'}}></th>
+              <th style={{width: '170px'}}>Time</th>
+              <th style={{width: 'auto'}}>Details</th>
+              <th style={{width: '24px'}}></th>
+              <th style={{width: '80px'}}>Duration</th>
+            </tr>
+          </thead>
+          {unifiedList.map(item => (
+            <UnifiedEntry
+              key={item.type === 'task' ? `task-${(item.item as Task).id}` : `entry-${(item.item as LogEntrySummary).uuid}`}
+              entry={item.item}
+              entries={item.entries}
+              isTask={item.type === 'task'}
+              onClick={handleEntryClick}
+              isSelectMode={isSelectMode}
+              isSelected={item.type === 'task' 
+                ? item.entries?.every(e => selectedEntries.includes(e.uuid))
+                : selectedEntries.includes((item.item as LogEntrySummary).uuid)
+              }
+              onSelectionChange={handleSelectionChange}
+              selectedEntries={selectedEntries}
+              isExpanded={item.type === 'task' ? expandedTasks.has((item.item as Task).id) : undefined}
+              onExpandChange={item.type === 'task' ? (expanded) => handleTaskExpand((item.item as Task).id, expanded) : undefined}
+            />
+          ))}
+        </table>
+      </div>
     </div>
   );
 } 

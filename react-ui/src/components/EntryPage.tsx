@@ -386,11 +386,11 @@ export default function EntryPage() {
           </div>
           <div className="info-item">
             <span className="info-label">End:</span>
-            <span className="info-value">{api.formatDuration(entry.start_time, entry.duration_ms)}</span>
+            <span className="info-value">{api.formatTimestamp(new Date(new Date(entry.start_time).getTime() + entry.duration_ms).toISOString())}</span>
           </div>
           <div className="info-item">
             <span className="info-label">Duration:</span>
-            <span className="info-value">{entry.duration_ms}ms</span>
+            <span className="info-value">{api.formatDuration(entry.duration_ms)}</span>
           </div>
           <div className="info-item">
             <span className="info-label">Exit Code:</span>

@@ -64,6 +64,12 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
         .route("/api/redact", post(rest::handle_bulk_redact_post))  // Changed to /api/redact
         .route("/diffcontent/:uuid", get(rest::handle_diffcontent))
         
+        // Task management routes
+        .route("/api/tasks", get(rest::handle_tasks_get))
+        .route("/api/task", post(rest::handle_task_create_post))
+        .route("/api/task/update", post(rest::handle_task_update_post))
+        .route("/api/entries/ungroup", post(rest::handle_entries_ungroup_post))
+        
 
         
         // Static assets

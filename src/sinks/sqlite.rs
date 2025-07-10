@@ -34,6 +34,16 @@ fn migrate_up_one(
             Ok("2.4.0".to_string())
         }
         "2.4.0" => {
+            // Add tasks table and task_id column to entries
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )",
+                []
+            )?;
+            conn.execute("ALTER TABLE prodlog_entries ADD COLUMN task_id INTEGER", [])?;
             Ok("2.5".to_string())
         }
         _ => {
@@ -121,9 +131,18 @@ impl SqliteSink {
                         filename TEXT,
                         terminal_rows INTEGER,
                         terminal_cols INTEGER,
+                        task_id INTEGER,
                         output BLOB,
                         original_content BLOB,
                         edited_content BLOB
+                    );",
+                    []
+                )?;
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        created_at TEXT NOT NULL
                     );",
                     []
                 )?;
@@ -158,8 +177,8 @@ impl Sink for SqliteSink {
 
         conn
             .execute(
-                "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, message, is_noop, exit_code, local_user, remote_user, filename, terminal_rows, terminal_cols, output, original_content, edited_content)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, message, is_noop, exit_code, local_user, remote_user, filename, terminal_rows, terminal_cols, task_id, output, original_content, edited_content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                 params![
                     if capture.capture_type == CaptureType::Run {
                         "run"
@@ -181,6 +200,7 @@ impl Sink for SqliteSink {
                     capture.filename,
                     capture.terminal_rows,
                     capture.terminal_cols,
+                    capture.task_id,
                     &capture.captured_output,
                     capture.original_content,
                     capture.edited_content
@@ -217,6 +237,7 @@ fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
         filename: row.get("filename")?,
         terminal_rows: row.get("terminal_rows")?,
         terminal_cols: row.get("terminal_cols")?,
+        task_id: row.get("task_id")?,
         captured_output: row.get("output")?,
         original_content: row.get("original_content")?,
         edited_content: row.get("edited_content")?,
@@ -298,5 +319,81 @@ impl UiSource for SqliteSink {
             Err(QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
         }
+    }
+
+    fn create_task(&self, name: &str) -> Result<i64, std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let created_at = chrono::Utc::now().to_rfc3339();
+        
+        conn.execute(
+            "INSERT INTO tasks (name, created_at) VALUES (?1, ?2)",
+            params![name, created_at]
+        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        let task_id = conn.last_insert_rowid();
+        Ok(task_id)
+    }
+
+    fn get_task(&self, task_id: i64) -> Result<Option<Task>, std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        match conn.query_row(
+            "SELECT id, name, created_at FROM tasks WHERE id = ?",
+            params![task_id],
+            |row| {
+                Ok(Task {
+                    id: row.get("id")?,
+                    name: row.get("name")?,
+                    created_at: row.get("created_at")?,
+                })
+            }
+        ) {
+            Ok(task) => Ok(Some(task)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        }
+    }
+
+    fn get_all_tasks(&self) -> Result<Vec<Task>, std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        let mut stmt = conn.prepare("SELECT id, name, created_at FROM tasks ORDER BY created_at DESC")
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        let tasks = stmt.query_map([], |row| {
+            Ok(Task {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                created_at: row.get("created_at")?,
+            })
+        }).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        Ok(tasks)
+    }
+
+    fn update_task_name(&self, task_id: i64, name: &str) -> Result<(), std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        conn.execute(
+            "UPDATE tasks SET name = ? WHERE id = ?",
+            params![name, task_id]
+        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        Ok(())
+    }
+
+    fn assign_entries_to_task(&self, entry_uuids: &[String], task_id: Option<i64>) -> Result<(), std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        for uuid in entry_uuids {
+            conn.execute(
+                "UPDATE prodlog_entries SET task_id = ? WHERE uuid = ?",
+                params![task_id, uuid]
+            ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        }
+        
+        Ok(())
     }
 }

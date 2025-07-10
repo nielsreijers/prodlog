@@ -6,8 +6,9 @@ use serde_json::json;
 use similar::{ ChangeTag, TextDiff };
 use tokio::sync::RwLock;
 use uuid::Uuid;
+use chrono::Utc;
 
-use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
+use crate::{model::{CaptureV2_4, CaptureV2_4Summary, Task}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
 
 use super::ProdlogUiState;
 
@@ -27,6 +28,19 @@ pub struct EntryRedactData {
 #[derive(Deserialize)]
 pub struct BulkRedactData {
     pub passwords: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct TaskCreateData {
+    pub name: String,
+    pub entry_uuids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct TaskUpdateData {
+    pub task_id: i64,
+    pub name: Option<String>,
+    pub entry_uuids: Option<Vec<String>>,
 }
 
 pub async fn get_entry(
@@ -245,5 +259,103 @@ pub async fn handle_bulk_redact_post(
         "message": format!("Redaction complete. {} out of {} entries were modified.", redacted_count, total_entries),
         "redacted_count": redacted_count,
         "total_entries": total_entries
+    }))).into_response()
+}
+
+pub async fn handle_task_create_post(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<TaskCreateData>
+) -> impl IntoResponse {
+    if data.name.trim().is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Task name cannot be empty" }))).into_response();
+    }
+
+    let task_id = match sink.read().await.create_task(data.name.trim()) {
+        Ok(task_id) => task_id,
+        Err(e) => {
+            let error_msg = format!("Error creating task: {}", e);
+            print_prodlog_warning(&error_msg);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response();
+        }
+    };
+
+    // Assign entries to the task
+    if !data.entry_uuids.is_empty() {
+        if let Err(e) = sink.read().await.assign_entries_to_task(&data.entry_uuids, Some(task_id)) {
+            let error_msg = format!("Error assigning entries to task {}: {}", task_id, e);
+            print_prodlog_warning(&error_msg);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response();
+        }
+    }
+
+    (StatusCode::OK, Json(json!({
+        "message": "Task created successfully",
+        "task_id": task_id
+    }))).into_response()
+}
+
+pub async fn handle_task_update_post(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<TaskUpdateData>
+) -> impl IntoResponse {
+    let source = sink.read().await;
+    
+    // Update task name if provided
+    if let Some(name) = &data.name {
+        if name.trim().is_empty() {
+            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Task name cannot be empty" }))).into_response();
+        }
+        
+        if let Err(e) = source.update_task_name(data.task_id, name.trim()) {
+            let error_msg = format!("Error updating task name for task {}: {}", data.task_id, e);
+            print_prodlog_warning(&error_msg);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response();
+        }
+    }
+
+    // Update entry assignments if provided
+    if let Some(entry_uuids) = &data.entry_uuids {
+        if let Err(e) = source.assign_entries_to_task(entry_uuids, Some(data.task_id)) {
+            let error_msg = format!("Error assigning entries to task {}: {}", data.task_id, e);
+            print_prodlog_warning(&error_msg);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response();
+        }
+    }
+
+    (StatusCode::OK, Json(json!({
+        "message": "Task updated successfully"
+    }))).into_response()
+}
+
+pub async fn handle_tasks_get(
+    State(sink): State<ProdlogUiState>,
+) -> impl IntoResponse {
+    match sink.read().await.get_all_tasks() {
+        Ok(tasks) => (StatusCode::OK, Json(tasks)).into_response(),
+        Err(e) => {
+            let error_msg = format!("Error loading tasks: {}", e);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        }
+    }
+}
+
+pub async fn handle_entries_ungroup_post(
+    State(sink): State<ProdlogUiState>,
+    Json(entry_uuids): Json<Vec<String>>
+) -> impl IntoResponse {
+    if entry_uuids.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "No entries provided" }))).into_response();
+    }
+
+    // Remove entries from any task (set task_id to None)
+    if let Err(e) = sink.read().await.assign_entries_to_task(&entry_uuids, None) {
+        let error_msg = format!("Error ungrouping entries: {}", e);
+        print_prodlog_warning(&error_msg);
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response();
+    }
+
+    (StatusCode::OK, Json(json!({
+        "message": "Entries ungrouped successfully"
     }))).into_response()
 }

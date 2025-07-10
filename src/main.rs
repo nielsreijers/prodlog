@@ -130,6 +130,7 @@ impl StdoutHandler {
             filename: "".to_string(),
             terminal_rows: 0,
             terminal_cols: 0,
+            task_id: None,
             captured_output: Vec::new(),
             original_content: "".as_bytes().to_vec(),
             edited_content: "".as_bytes().to_vec(),
@@ -188,6 +189,7 @@ impl StdoutHandler {
             edited_content: "".as_bytes().to_vec(),
             terminal_rows: 0,
             terminal_cols: 0,
+            task_id: None,
         })
     }
 
