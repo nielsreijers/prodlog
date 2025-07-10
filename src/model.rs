@@ -10,6 +10,13 @@ pub enum CaptureType {
     Edit,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Task {
+    pub id: i64,
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CaptureV2_4 {
@@ -28,6 +35,7 @@ pub struct CaptureV2_4 {
     pub filename: String,
     pub terminal_rows: u16,
     pub terminal_cols: u16,
+    pub task_id: Option<i64>,
     #[serde_as(as = "Base64")]
     pub captured_output: Vec<u8>,
     #[serde_as(as = "Base64")]
@@ -54,6 +62,7 @@ pub struct CaptureV2_4Summary {
     pub filename: String,
     pub terminal_rows: u16,
     pub terminal_cols: u16,
+    pub task_id: Option<i64>,
 }
 
 impl From<&CaptureV2_4> for CaptureV2_4Summary {
@@ -74,6 +83,7 @@ impl From<&CaptureV2_4> for CaptureV2_4Summary {
             filename: entry.filename.clone(),
             terminal_rows: entry.terminal_rows,
             terminal_cols: entry.terminal_cols,
+            task_id: entry.task_id,
         }
     }
 }

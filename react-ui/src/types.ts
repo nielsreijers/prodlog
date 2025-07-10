@@ -17,6 +17,7 @@ export interface LogEntry {
   edited_content: string; // base64 encoded
   terminal_rows: number;
   terminal_cols: number;
+  task_id?: number;
 }
 
 // Lightweight version for index page - excludes large content fields
@@ -36,6 +37,21 @@ export interface LogEntrySummary {
   filename: string;
   terminal_rows: number;
   terminal_cols: number;
+  task_id?: number;
+}
+
+export interface Task {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface TaskGroup {
+  task: Task;
+  entries: LogEntrySummary[];
+  start_time: string;
+  end_time: string;
+  total_duration: number;
 }
 
 export interface Filters {
@@ -66,6 +82,17 @@ export interface EntryUpdateRequest {
   uuid: string;
   message: string;
   is_noop: boolean;
+}
+
+export interface TaskCreateRequest {
+  name: string;
+  entry_uuids: string[];
+}
+
+export interface TaskUpdateRequest {
+  task_id: number;
+  name?: string;
+  entry_uuids?: string[];
 }
 
 export interface DiffResponse {

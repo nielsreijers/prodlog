@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "prodlog"
-version = "2.4.7"
+version = "2.5.0"
 dependencies = [
  "axum",
  "base64",

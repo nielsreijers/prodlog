@@ -6,14 +6,17 @@ import {
   EntryRedactRequest, 
   EntryUpdateRequest,
   DiffResponse,
-  ApiResponse 
+  ApiResponse,
+  Task,
+  TaskCreateRequest,
+  TaskUpdateRequest
 } from './types';
 
 class ApiService {
-  private baseUrl = '';
+  private baseUrl = '/api';
 
   async get<T>(url: string): Promise<T> {
-    const response = await fetch(url);
+    const response = await fetch(this.baseUrl + url);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -21,7 +24,7 @@ class ApiService {
   }
 
   async post<T>(url: string, data: any): Promise<T> {
-    const response = await fetch(url, {
+    const response = await fetch(this.baseUrl + url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -48,7 +51,7 @@ class ApiService {
     if (filters.show_noop) params.append('show_noop', 'true');
     
     const queryString = params.toString();
-    const url = queryString ? `/api/entries?${queryString}` : '/api/entries';
+    const url = queryString ? `/entries?${queryString}` : '/entries';
     
     return this.get<LogEntry[]>(url);
   }
@@ -65,34 +68,59 @@ class ApiService {
     if (filters.show_noop) params.append('show_noop', 'true');
     
     const queryString = params.toString();
-    const url = queryString ? `/api/entries/summary?${queryString}` : '/api/entries/summary';
+    const url = queryString ? `/entries/summary?${queryString}` : '/entries/summary';
     
     return this.get<LogEntrySummary[]>(url);
   }
 
   // Get single entry
   async getEntry(uuid: string): Promise<LogEntry> {
-    return this.get<LogEntry>(`/api/entry/${uuid}`);
+    return this.get<LogEntry>(`/entry/${uuid}`);
   }
 
   // Update entry
   async updateEntry(data: EntryUpdateRequest): Promise<ApiResponse> {
-    return this.post<ApiResponse>('/api/entry', data);
+    return this.post<ApiResponse>('/entry', data);
   }
 
   // Redact password from single entry
   async redactEntry(data: EntryRedactRequest): Promise<ApiResponse> {
-    return this.post<ApiResponse>('/api/entry/redact', data);
+    return this.post<ApiResponse>('/entry/redact', data);
   }
 
   // Bulk redact passwords
   async bulkRedact(data: BulkRedactRequest): Promise<ApiResponse> {
-    return this.post<ApiResponse>('/api/redact', data);
+    return this.post<ApiResponse>('/redact', data);
   }
 
   // Get diff content
   async getDiffContent(uuid: string): Promise<DiffResponse> {
-    return this.get<DiffResponse>(`/diffcontent/${uuid}`);
+    // Note: this endpoint doesn't have the /api prefix
+    const response = await fetch(`/diffcontent/${uuid}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  // Get all tasks
+  async getTasks(): Promise<Task[]> {
+    return this.get<Task[]>('/tasks');
+  }
+
+  // Create a new task
+  async createTask(data: TaskCreateRequest): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/task', data);
+  }
+
+  // Update a task
+  async updateTask(data: TaskUpdateRequest): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/task/update', data);
+  }
+
+  // Remove entries from any task
+  async ungroupEntries(entryUuids: string[]): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/entries/ungroup', entryUuids);
   }
 
   // Copy text to clipboard
@@ -130,11 +158,17 @@ class ApiService {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds.split('.')[0]} UTC`;
   }
 
-    // Format duration
-  formatDuration(start_time: string, duration_ms: number): string {
-    const start = new Date(start_time);
-    const end = new Date(start.getTime() + duration_ms);
-    return this.formatTimestamp(end.toISOString());
+  // Format duration
+  formatDuration(duration_ms: number): string {
+    if (duration_ms < 1000) {
+      return `${duration_ms}ms`;
+    } else if (duration_ms < 60000) {
+      return `${(duration_ms / 1000).toFixed(1)}s`;
+    } else {
+      const minutes = Math.floor(duration_ms / 60000);
+      const seconds = ((duration_ms % 60000) / 1000).toFixed(0);
+      return `${minutes}m ${seconds}s`;
+    }
   }
 }
 
