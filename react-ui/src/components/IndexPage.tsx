@@ -46,6 +46,29 @@ const CollapsedIcon = () => (
   </svg>
 );
 
+interface ActiveTaskButtonProps {
+  taskId: number;
+  isActive: boolean;
+  onToggle: (taskId: number) => void;
+}
+
+function ActiveTaskButton({ taskId, isActive, onToggle }: ActiveTaskButtonProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggle(taskId);
+  };
+
+  return (
+    <button 
+      className={`active-task-button ${isActive ? 'active' : ''}`}
+      onClick={handleClick}
+      title={isActive ? 'Deactivate task' : 'Activate task'}
+    >
+      {isActive ? '🔴' : '🔘'}
+    </button>
+  );
+}
+
 interface CopyButtonProps {
   entry: LogEntrySummary;
 }
@@ -244,6 +267,8 @@ interface UnifiedEntryProps {
   selectedEntries?: string[];
   isExpanded?: boolean;
   onExpandChange?: (expanded: boolean) => void;
+  activeTaskId: number | null;
+  onActiveTaskToggle: (taskId: number) => void;
 }
 
 interface SingleIndexEntryProps {
@@ -332,7 +357,9 @@ function UnifiedEntry({
   onSelectionChange,
   selectedEntries = [],
   isExpanded: forcedExpanded,
-  onExpandChange
+  onExpandChange,
+  activeTaskId,
+  onActiveTaskToggle
 }: UnifiedEntryProps) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const isExpanded = forcedExpanded !== undefined ? forcedExpanded : localExpanded;
@@ -378,7 +405,7 @@ function UnifiedEntry({
   const hasFailure = taskEntries.some(e => e.exit_code !== 0);
 
   return (
-    <tbody className="unified-entry task-entry">
+    <tbody className={`unified-entry task-entry ${activeTaskId === task.id ? 'active-task' : ''}`}>
       <tr className="main-row" onClick={handleExpandClick}>
         <td>
           <div className="task-expand-icon">
@@ -409,6 +436,11 @@ function UnifiedEntry({
         </td>
         <td>
           <div className="button-group">
+            <ActiveTaskButton 
+              taskId={task.id} 
+              isActive={activeTaskId === task.id}
+              onToggle={onActiveTaskToggle}
+            />
           </div>
         </td>
         <td>{api.formatDuration(totalDuration)}</td>
@@ -428,6 +460,42 @@ function UnifiedEntry({
   );
 }
 
+function ActiveTaskMessage({ activeTaskId, tasks }: { activeTaskId: number | null; tasks: Task[] }) {
+  if (!activeTaskId) return null;
+  
+  const activeTask = tasks.find(task => task.id === activeTaskId);
+  if (!activeTask) return null;
+
+  return (
+    <div className="active-task-header-message">
+      🔴 <strong>Active Task:</strong> {activeTask.name}
+    </div>
+  );
+}
+
+interface StartTaskButtonProps {
+  onCreateAndActivate: (taskName: string) => void;
+}
+
+function StartTaskButton({ onCreateAndActivate }: StartTaskButtonProps) {
+  const handleClick = async () => {
+    try {
+      const taskName = prompt("Enter task name:");
+      if (!taskName || taskName.trim() === '') {
+        return; // User cancelled or entered empty name
+      }
+      
+      onCreateAndActivate(taskName.trim());
+    } catch (error) {
+      console.error('Error starting task:', error);
+    }
+  };
+
+  return (
+    <button className="bluebutton" onClick={handleClick}>Start New Task</button>
+  );
+}
+
 export default function IndexPage() {
   const [entries, setEntries] = useState<LogEntrySummary[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -437,6 +505,7 @@ export default function IndexPage() {
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [showTaskManager, setShowTaskManager] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const navigate = useNavigate();
   const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
   const allTaskIds = tasks.map(task => task.id);
@@ -470,12 +539,14 @@ export default function IndexPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [entriesData, tasksData] = await Promise.all([
+        const [entriesData, tasksData, activeTaskData] = await Promise.all([
           api.getEntriesSummary(filters),
-          api.getTasks()
+          api.getTasks(),
+          api.getActiveTask()
         ]);
         setEntries(entriesData);
         setTasks(tasksData);
+        setActiveTaskId(activeTaskData.task_id);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
       } finally {
@@ -485,6 +556,41 @@ export default function IndexPage() {
 
     loadData();
   }, [searchParams]);
+
+  const handleActiveTaskToggle = async (taskId: number) => {
+    try {
+      const newActiveTaskId = activeTaskId === taskId ? null : taskId;
+      await api.setActiveTask(newActiveTaskId);
+      setActiveTaskId(newActiveTaskId);
+    } catch (err) {
+      console.error('Error toggling active task:', err);
+    }
+  };
+
+  const handleStartTask = async (taskName: string) => {
+    try {
+      // Create the task
+      const result = await api.createTask({
+        name: taskName,
+        entry_uuids: []
+      });
+      
+      // Set it as the active task
+      await api.setActiveTask(result.task_id);
+      
+      // Reload data to get the new task
+      const [entriesData, tasksData, activeTaskData] = await Promise.all([
+        api.getEntriesSummary(filters),
+        api.getTasks(),
+        api.getActiveTask()
+      ]);
+      setEntries(entriesData);
+      setTasks(tasksData);
+      setActiveTaskId(activeTaskData.task_id);
+    } catch (err) {
+      console.error('Error starting task:', err);
+    }
+  };
 
   const handleRowClick = (uuid: string) => {
     navigate(`/entry/${uuid}`);
@@ -677,8 +783,9 @@ export default function IndexPage() {
         <div className="header-controls">
           <div>
             <button className={`bluebutton ${isSelectMode ? 'active' : ''}`} onClick={toggleSelectMode}>
-              {isSelectMode ? 'Cancel' : 'Task grouping'}
+              {isSelectMode ? 'Cancel' : 'Task Grouping'}
             </button>
+            <StartTaskButton onCreateAndActivate={handleStartTask} />
                        
             {isSelectMode && (
               <>
@@ -694,6 +801,7 @@ export default function IndexPage() {
               </>
             )}
           </div>
+          <ActiveTaskMessage activeTaskId={activeTaskId} tasks={tasks} />
           <button className="bluebutton" type="button" onClick={() => navigate('/redact')}>
             Bulk Redact Passwords
           </button>
@@ -702,7 +810,6 @@ export default function IndexPage() {
       
       <FilterForm filters={filters} onFiltersChange={updateFilters} onSearchResults={setEntries} onExpandToggle={handleExpandToggle} allExpanded={allExpanded} />
       
-
       {showTaskManager && (
         <TaskManager
           selectedEntries={selectedEntries}
@@ -717,7 +824,7 @@ export default function IndexPage() {
         <table>
           <thead>
             <tr>
-              <th style={{width: '24px'}}></th>
+              <th style={{width: '26px'}}></th>
               {isSelectMode && <th style={{width: '24px'}}></th>}
               <th style={{width: '24px'}}></th>
               <th style={{width: '170px'}}>Time</th>
@@ -742,6 +849,8 @@ export default function IndexPage() {
               selectedEntries={selectedEntries}
               isExpanded={item.type === 'task' ? expandedTasks.has((item.item as Task).id) : undefined}
               onExpandChange={item.type === 'task' ? (expanded) => handleTaskExpand((item.item as Task).id, expanded) : undefined}
+              activeTaskId={activeTaskId}
+              onActiveTaskToggle={handleActiveTaskToggle}
             />
           ))}
         </table>

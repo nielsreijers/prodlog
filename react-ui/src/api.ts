@@ -9,7 +9,8 @@ import {
   ApiResponse,
   Task,
   TaskCreateRequest,
-  TaskUpdateRequest
+  TaskUpdateRequest,
+  TaskCreateResponse
 } from './types';
 
 class ApiService {
@@ -109,8 +110,8 @@ class ApiService {
   }
 
   // Create a new task
-  async createTask(data: TaskCreateRequest): Promise<ApiResponse> {
-    return this.post<ApiResponse>('/task', data);
+  async createTask(data: TaskCreateRequest): Promise<TaskCreateResponse> {
+    return this.post<TaskCreateResponse>('/task', data);
   }
 
   // Update a task
@@ -121,6 +122,16 @@ class ApiService {
   // Remove entries from any task
   async ungroupEntries(entryUuids: string[]): Promise<ApiResponse> {
     return this.post<ApiResponse>('/entries/ungroup', entryUuids);
+  }
+
+  // Get active task
+  async getActiveTask(): Promise<{ task_id: number | null }> {
+    return this.get<{ task_id: number | null }>('/active-task');
+  }
+
+  // Set active task
+  async setActiveTask(taskId: number | null): Promise<ApiResponse> {
+    return this.post<ApiResponse>('/active-task', { task_id: taskId });
   }
 
   // Copy text to clipboard

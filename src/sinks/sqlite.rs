@@ -46,6 +46,20 @@ fn migrate_up_one(
             conn.execute("ALTER TABLE prodlog_entries ADD COLUMN task_id INTEGER", [])?;
             Ok("2.5".to_string())
         }
+        "2.5" => {
+            // Add active task table
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS active_task (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    task_id INTEGER,
+                    FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE SET NULL
+                )",
+                []
+            )?;
+            // Insert default row with no active task
+            conn.execute("INSERT OR IGNORE INTO active_task (id, task_id) VALUES (1, NULL)", [])?;
+            Ok("2.6".to_string())
+        }
         _ => {
             prodlog_panic(
                 &format!("Database schema version {} is not supported. Please upgrade Prodlog.", version)
@@ -146,6 +160,15 @@ impl SqliteSink {
                     );",
                     []
                 )?;
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS active_task (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        task_id INTEGER,
+                        FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE SET NULL
+                    );",
+                    []
+                )?;
+                conn.execute("INSERT OR IGNORE INTO active_task (id, task_id) VALUES (1, NULL)", [])?;
                 self.set_schema_version(env!("CARGO_PKG_VERSION"), false)?;
             }
         }
@@ -171,7 +194,7 @@ impl SqliteSink {
 }
 
 impl Sink for SqliteSink {
-    fn add_entry(&mut self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
+    fn add_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
         let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
@@ -200,7 +223,7 @@ impl Sink for SqliteSink {
                     capture.filename,
                     capture.terminal_rows,
                     capture.terminal_cols,
-                    capture.task_id,
+                    self.get_active_task()?,
                     &capture.captured_output,
                     capture.original_content,
                     capture.edited_content
@@ -393,6 +416,30 @@ impl UiSource for SqliteSink {
                 params![task_id, uuid]
             ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         }
+        
+        Ok(())
+    }
+
+    fn get_active_task(&self) -> Result<Option<i64>, std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        match conn.query_row(
+            "SELECT task_id FROM active_task WHERE id = 1",
+            [],
+            |row| row.get::<_, Option<i64>>("task_id")
+        ) {
+            Ok(task_id) => Ok(task_id),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        }
+    }
+
+    fn set_active_task(&self, task_id: Option<i64>) -> Result<(), std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        
+        conn.execute(
+            "UPDATE active_task SET task_id = ? WHERE id = 1",
+            params![task_id]
+        ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         
         Ok(())
     }

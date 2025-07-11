@@ -69,6 +69,8 @@ pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
         .route("/api/task", post(rest::handle_task_create_post))
         .route("/api/task/update", post(rest::handle_task_update_post))
         .route("/api/entries/ungroup", post(rest::handle_entries_ungroup_post))
+        .route("/api/active-task", get(rest::handle_active_task_get))
+        .route("/api/active-task", post(rest::handle_active_task_post))
         
 
         
