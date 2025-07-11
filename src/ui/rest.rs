@@ -359,3 +359,37 @@ pub async fn handle_entries_ungroup_post(
         "message": "Entries ungrouped successfully"
     }))).into_response()
 }
+
+#[derive(Deserialize)]
+pub struct ActiveTaskData {
+    pub task_id: Option<i64>,
+}
+
+pub async fn handle_active_task_get(
+    State(sink): State<ProdlogUiState>,
+) -> impl IntoResponse {
+    match sink.read().await.get_active_task() {
+        Ok(task_id) => (StatusCode::OK, Json(json!({ "task_id": task_id }))).into_response(),
+        Err(e) => {
+            let error_msg = format!("Error getting active task: {}", e);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        }
+    }
+}
+
+pub async fn handle_active_task_post(
+    State(sink): State<ProdlogUiState>,
+    Json(data): Json<ActiveTaskData>
+) -> impl IntoResponse {
+    match sink.read().await.set_active_task(data.task_id) {
+        Ok(_) => (StatusCode::OK, Json(json!({
+            "message": "Active task updated successfully"
+        }))).into_response(),
+        Err(e) => {
+            let error_msg = format!("Error setting active task: {}", e);
+            print_prodlog_warning(&error_msg);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": error_msg }))).into_response()
+        }
+    }
+}

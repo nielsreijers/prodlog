@@ -95,6 +95,11 @@ export interface TaskUpdateRequest {
   entry_uuids?: string[];
 }
 
+export interface TaskCreateResponse {
+  message: string;
+  task_id: number;
+}
+
 export interface DiffResponse {
   diff: string;
 } 
