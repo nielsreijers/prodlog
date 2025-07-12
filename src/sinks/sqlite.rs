@@ -357,26 +357,6 @@ impl UiSource for SqliteSink {
         Ok(task_id)
     }
 
-    fn get_task(&self, task_id: i64) -> Result<Option<Task>, std::io::Error> {
-        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        
-        match conn.query_row(
-            "SELECT id, name, created_at FROM tasks WHERE id = ?",
-            params![task_id],
-            |row| {
-                Ok(Task {
-                    id: row.get("id")?,
-                    name: row.get("name")?,
-                    created_at: row.get("created_at")?,
-                })
-            }
-        ) {
-            Ok(task) => Ok(Some(task)),
-            Err(QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
-        }
-    }
-
     fn get_all_tasks(&self) -> Result<Vec<Task>, std::io::Error> {
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         

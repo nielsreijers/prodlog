@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { LogEntrySummary, Filters, Task } from '../types';
 import { api } from '../api';
@@ -286,8 +286,10 @@ function SingleIndexEntry({
   isSelectMode = false,
   isSelected = false,
   onSelectionChange,
-  isTaskChild = false
-}: SingleIndexEntryProps) {
+  isTaskChild = false,
+  showTaskColumn = false,
+  task = null
+}: SingleIndexEntryProps & { showTaskColumn?: boolean; task?: Task | null }) {
   const handleClick = (e: React.MouseEvent) => {
     if (isSelectMode) {
       e.stopPropagation();
@@ -337,6 +339,15 @@ function SingleIndexEntry({
           </div>
         </div>
       </td>
+      {showTaskColumn && (
+        <td className="entry-task">
+          {task ? (
+            <div className="task-name-small">{task.name}</div>
+          ) : (
+            <div className="no-task">—</div>
+          )}
+        </td>
+      )}
       <td>
         <div className="button-group">
           <CopyButton entry={entry} />
@@ -507,19 +518,30 @@ export default function IndexPage() {
   const [showTaskManager, setShowTaskManager] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const navigate = useNavigate();
-  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(new Set());
+  const isInitialLoad = useRef(true);
+  
+  // Parse expanded tasks from URL
+  const expandedTasksParam = searchParams.get('expanded');
+  const expandedTasksFromUrl = expandedTasksParam 
+    ? new Set(expandedTasksParam.split(',').map(id => parseInt(id)).filter(id => !isNaN(id)))
+    : new Set<number>();
+  
+  const [expandedTasks, setExpandedTasks] = useState<Set<number>>(expandedTasksFromUrl);
   const allTaskIds = tasks.map(task => task.id);
   const allExpanded = allTaskIds.length > 0 && allTaskIds.every(id => expandedTasks.has(id));
   
   // Parse filters from URL
-  const filters: Filters = {
+  const filters = useMemo(() => ({
     date_from: searchParams.get('date_from') || undefined,
     date_to: searchParams.get('date_to') || undefined,
     host: searchParams.get('host') || undefined,
     search: searchParams.get('search') || undefined,
     search_content: searchParams.get('search_content') || undefined,
     show_noop: searchParams.get('show_noop') === 'true' || undefined,
-  };
+  }), [searchParams]);
+
+  // Parse view mode from URL
+  const isFlatView = searchParams.get('view') === 'flat';
 
   // Update URL when filters change
   const updateFilters = (newFilters: Filters) => {
@@ -531,6 +553,28 @@ export default function IndexPage() {
     if (newFilters.search_content) params.set('search_content', newFilters.search_content);
     if (newFilters.show_noop) params.set('show_noop', 'true');
     
+    setSearchParams(params);
+  };
+
+  // Update URL when view mode changes
+  const updateViewMode = (flatView: boolean) => {
+    const params = new URLSearchParams(searchParams);
+    if (flatView) {
+      params.set('view', 'flat');
+    } else {
+      params.delete('view');
+    }
+    setSearchParams(params);
+  };
+
+  // Update URL when expanded tasks change
+  const updateExpandedTasks = (newExpandedTasks: Set<number>) => {
+    const params = new URLSearchParams(searchParams);
+    if (newExpandedTasks.size > 0) {
+      params.set('expanded', Array.from(newExpandedTasks).join(','));
+    } else {
+      params.delete('expanded');
+    }
     setSearchParams(params);
   };
 
@@ -556,6 +600,14 @@ export default function IndexPage() {
 
     loadData();
   }, [searchParams]);
+
+  // Update URL when expanded tasks change
+  useEffect(() => {
+    if (!isInitialLoad.current) {
+      updateExpandedTasks(expandedTasks);
+    }
+    isInitialLoad.current = false;
+  }, [expandedTasks]);
 
   const handleActiveTaskToggle = async (taskId: number) => {
     try {
@@ -734,11 +786,34 @@ export default function IndexPage() {
 
   const unifiedList = createUnifiedList();
 
+  // Create a flat list of all entries with task information
+  const createFlatList = () => {
+    const flatEntries = entries.map(entry => {
+      const task = entry.task_id ? tasks.find(t => t.id === entry.task_id) : null;
+      return {
+        entry,
+        task,
+        timestamp: entry.start_time
+      };
+    });
+
+    // Sort by timestamp, newest first
+    return flatEntries.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  };
+
+  const flatList = createFlatList();
+
   const handleExpandToggle = () => {
     if (allExpanded) {
-      setExpandedTasks(new Set());
+      const newExpandedTasks = new Set<number>();
+      setExpandedTasks(newExpandedTasks);
+      updateExpandedTasks(newExpandedTasks);
     } else {
-      setExpandedTasks(new Set(allTaskIds));
+      const newExpandedTasks = new Set(allTaskIds);
+      setExpandedTasks(newExpandedTasks);
+      updateExpandedTasks(newExpandedTasks);
     }
   };
 
@@ -782,10 +857,13 @@ export default function IndexPage() {
         <h1>Prodlog Viewer</h1>
         <div className="header-controls">
           <div>
+            <button className={`bluebutton ${isFlatView ? 'active' : ''}`} onClick={() => updateViewMode(!isFlatView)}>
+              {isFlatView ? 'Grouped View' : 'Flat View'}
+            </button>
+            <StartTaskButton onCreateAndActivate={handleStartTask} />
             <button className={`bluebutton ${isSelectMode ? 'active' : ''}`} onClick={toggleSelectMode}>
               {isSelectMode ? 'Cancel' : 'Task Grouping'}
             </button>
-            <StartTaskButton onCreateAndActivate={handleStartTask} />
                        
             {isSelectMode && (
               <>
@@ -829,30 +907,47 @@ export default function IndexPage() {
               <th style={{width: '24px'}}></th>
               <th style={{width: '170px'}}>Time</th>
               <th style={{width: 'auto'}}>Details</th>
+              {isFlatView && <th style={{width: '150px'}}>Task</th>}
               <th style={{width: '24px'}}></th>
               <th style={{width: '80px'}}>Duration</th>
             </tr>
           </thead>
-          {unifiedList.map(item => (
-            <UnifiedEntry
-              key={item.type === 'task' ? `task-${(item.item as Task).id}` : `entry-${(item.item as LogEntrySummary).uuid}`}
-              entry={item.item}
-              entries={item.entries}
-              isTask={item.type === 'task'}
-              onClick={handleEntryClick}
-              isSelectMode={isSelectMode}
-              isSelected={item.type === 'task' 
-                ? item.entries?.every(e => selectedEntries.includes(e.uuid))
-                : selectedEntries.includes((item.item as LogEntrySummary).uuid)
-              }
-              onSelectionChange={handleSelectionChange}
-              selectedEntries={selectedEntries}
-              isExpanded={item.type === 'task' ? expandedTasks.has((item.item as Task).id) : undefined}
-              onExpandChange={item.type === 'task' ? (expanded) => handleTaskExpand((item.item as Task).id, expanded) : undefined}
-              activeTaskId={activeTaskId}
-              onActiveTaskToggle={handleActiveTaskToggle}
-            />
-          ))}
+          {isFlatView ? (
+            flatList.map(item => (
+              <tbody key={`entry-${item.entry.uuid}`}>
+                <SingleIndexEntry
+                  entry={item.entry}
+                  onClick={handleEntryClick}
+                  isSelectMode={isSelectMode}
+                  isSelected={selectedEntries.includes(item.entry.uuid)}
+                  onSelectionChange={handleSelectionChange}
+                  showTaskColumn={true}
+                  task={item.task}
+                />
+              </tbody>
+            ))
+          ) : (
+            unifiedList.map(item => (
+              <UnifiedEntry
+                key={item.type === 'task' ? `task-${(item.item as Task).id}` : `entry-${(item.item as LogEntrySummary).uuid}`}
+                entry={item.item}
+                entries={item.entries}
+                isTask={item.type === 'task'}
+                onClick={handleEntryClick}
+                isSelectMode={isSelectMode}
+                isSelected={item.type === 'task' 
+                  ? item.entries?.every(e => selectedEntries.includes(e.uuid))
+                  : selectedEntries.includes((item.item as LogEntrySummary).uuid)
+                }
+                onSelectionChange={handleSelectionChange}
+                selectedEntries={selectedEntries}
+                isExpanded={item.type === 'task' ? expandedTasks.has((item.item as Task).id) : undefined}
+                onExpandChange={item.type === 'task' ? (expanded) => handleTaskExpand((item.item as Task).id, expanded) : undefined}
+                activeTaskId={activeTaskId}
+                onActiveTaskToggle={handleActiveTaskToggle}
+              />
+            ))
+          )}
         </table>
       </div>
     </div>

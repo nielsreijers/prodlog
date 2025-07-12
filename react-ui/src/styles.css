@@ -1277,4 +1277,24 @@ tbody.task-entry.active-task tr td:last-child {
 .active-task-header-message strong {
     color: var(--prodlog-blue);
     margin-right: 0.25rem;
+}
+
+/* Task column styles for flat view */
+.entry-task {
+    font-size: 0.875rem;
+    color: var(--prodlog-text-secondary);
+}
+
+.task-name-small {
+    font-weight: 500;
+    color: var(--prodlog-blue);
+    background-color: rgba(109, 74, 255, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.no-task {
+    color: var(--prodlog-text-secondary);
+    font-style: italic;
 } 
