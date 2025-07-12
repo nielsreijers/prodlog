@@ -23,7 +23,6 @@ pub trait UiSource: Sink + Send + Sync {
     fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_4>, std::io::Error>;
     fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_4>, std::io::Error>;
     fn create_task(&self, name: &str) -> Result<i64, std::io::Error>;
-    fn get_task(&self, task_id: i64) -> Result<Option<crate::model::Task>, std::io::Error>;
     fn get_all_tasks(&self) -> Result<Vec<crate::model::Task>, std::io::Error>;
     fn update_task_name(&self, task_id: i64, name: &str) -> Result<(), std::io::Error>;
     fn assign_entries_to_task(&self, entry_uuids: &[String], task_id: Option<i64>) -> Result<(), std::io::Error>;

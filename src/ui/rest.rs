@@ -6,9 +6,8 @@ use serde_json::json;
 use similar::{ ChangeTag, TextDiff };
 use tokio::sync::RwLock;
 use uuid::Uuid;
-use chrono::Utc;
 
-use crate::{model::{CaptureV2_4, CaptureV2_4Summary, Task}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
+use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
 
 use super::ProdlogUiState;
 
