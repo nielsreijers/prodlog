@@ -556,8 +556,8 @@ input:checked + .slider:before {
 }
 
 .edit-or-copy-button svg {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
 }
 
 .edit-or-copy-button.copied {
