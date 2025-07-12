@@ -269,6 +269,8 @@ interface UnifiedEntryProps {
   onExpandChange?: (expanded: boolean) => void;
   activeTaskId: number | null;
   onActiveTaskToggle: (taskId: number) => void;
+  firstTime?: string;
+  lastTime?: string;
 }
 
 interface SingleIndexEntryProps {
@@ -370,7 +372,9 @@ function UnifiedEntry({
   isExpanded: forcedExpanded,
   onExpandChange,
   activeTaskId,
-  onActiveTaskToggle
+  onActiveTaskToggle,
+  firstTime,
+  lastTime
 }: UnifiedEntryProps) {
   const [localExpanded, setLocalExpanded] = useState(false);
   const isExpanded = forcedExpanded !== undefined ? forcedExpanded : localExpanded;
@@ -433,7 +437,16 @@ function UnifiedEntry({
             {hasFailure ? '✗' : '✓'}
           </div>
         </td>
-        <td className="entry-time">{api.formatTimestamp(startTime.toISOString())}</td>
+        <td className="entry-time">
+          {isTask && firstTime && lastTime ? (
+            <div className="task-time-range">
+              <div>{api.formatTimestamp(firstTime)}</div>
+              <div>to {api.formatTimestamp(lastTime)}</div>
+            </div>
+          ) : (
+            api.formatTimestamp(startTime.toISOString())
+          )}
+        </td>
         <td>
           <div className="entry-content">
             <div className="entry-details">
@@ -750,6 +763,8 @@ export default function IndexPage() {
       item: Task | LogEntrySummary;
       entries?: LogEntrySummary[];
       timestamp: string;
+      firstTime?: string;
+      lastTime?: string;
     }> = [];
 
     // Add tasks
@@ -759,12 +774,18 @@ export default function IndexPage() {
         const earliestEntry = taskGroups[task.id].reduce((earliest, entry) => {
           return new Date(entry.start_time) < new Date(earliest.start_time) ? entry : earliest;
         }, taskGroups[task.id][0]);
+        
+        const latestEntry = taskGroups[task.id].reduce((latest, entry) => {
+          return new Date(entry.start_time) > new Date(latest.start_time) ? entry : latest;
+        }, taskGroups[task.id][0]);
 
         unifiedList.push({
           type: 'task',
           item: task,
           entries: taskEntries,
-          timestamp: earliestEntry.start_time
+          timestamp: latestEntry.start_time, // Use latest time for sorting
+          firstTime: earliestEntry.start_time,
+          lastTime: latestEntry.start_time
         });
       }
     });
@@ -945,6 +966,8 @@ export default function IndexPage() {
                 onExpandChange={item.type === 'task' ? (expanded) => handleTaskExpand((item.item as Task).id, expanded) : undefined}
                 activeTaskId={activeTaskId}
                 onActiveTaskToggle={handleActiveTaskToggle}
+                firstTime={item.firstTime}
+                lastTime={item.lastTime}
               />
             ))
           )}

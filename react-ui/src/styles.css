@@ -1297,4 +1297,20 @@ tbody.task-entry.active-task tr td:last-child {
 .no-task {
     color: var(--prodlog-text-secondary);
     font-style: italic;
+}
+
+/* Task time range display */
+.task-time-range {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+}
+
+.task-time-range div:first-child {
+    font-weight: 500;
+}
+
+.task-time-range div:last-child {
+    color: var(--prodlog-text-secondary);
 } 
