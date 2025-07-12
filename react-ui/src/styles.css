@@ -1212,14 +1212,6 @@ tr.selected:hover {
 }
 
 /* Active task highlighting */
-tbody.task-entry.active-task {
-    background-color: rgba(109, 74, 255, 0.05);
-}
-
-tbody.task-entry.active-task tr {
-    background-color: rgba(109, 74, 255, 0.05);
-}
-
 tbody.task-entry.active-task tr:hover {
     background-color: rgba(109, 74, 255, 0.1);
 }

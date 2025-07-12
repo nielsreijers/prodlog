@@ -297,7 +297,13 @@ function SingleIndexEntry({
       e.stopPropagation();
       onSelectionChange?.(entry.uuid, !isSelected);
     } else {
-      onClick(entry);
+      // Check if Ctrl/Cmd key is pressed for new tab
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        window.open(`/entry/${entry.uuid}`, '_blank');
+      } else {
+        onClick(entry);
+      }
     }
   };
 
