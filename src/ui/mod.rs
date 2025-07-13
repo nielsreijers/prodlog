@@ -1,13 +1,13 @@
 use axum::{ routing::{get, post}, Router, response::Response, http::StatusCode };
 use tokio::sync::RwLock;
 use std::sync::Arc;
-use crate::{config::get_config, sinks::UiSource};
+use crate::{config::get_config, sinks::Sink};
 use axum::response::Html;
 
 mod rest;
 mod static_files;
 
-type ProdlogUiState = Arc<RwLock<Box<dyn UiSource>>>;
+type ProdlogUiState = Arc<RwLock<Box<dyn Sink>>>;
 
 pub async fn handle_prodlog_dyn_css() -> Response {
     let background = get_config().ui_background.clone();
@@ -53,7 +53,7 @@ pub async fn handle_react_app() -> Html<String> {
     }
 }
 
-pub async fn run_ui(sink: Arc<RwLock<Box<dyn UiSource>>>, port: u16) {
+pub async fn run_ui(sink: Arc<RwLock<Box<dyn Sink>>>, port: u16) {
     let app = Router::new()
         // API routes 
         .route("/api/entries", get(rest::handle_entries_get))

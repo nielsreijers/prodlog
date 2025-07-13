@@ -2,12 +2,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 use crate::model::CaptureV2_4;
 
-
 pub mod sqlite;
-
-pub trait Sink: Send + Sync {
-    fn add_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error>;
-}
 
 #[derive(Deserialize, Debug, Default)]
 pub struct Filters {
@@ -19,7 +14,9 @@ pub struct Filters {
     pub show_noop: Option<bool>,
 }
 
-pub trait UiSource: Sink + Send + Sync {
+pub trait Sink: Send + Sync {
+    fn add_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error>;
+
     fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_4>, std::io::Error>;
     fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_4>, std::io::Error>;
     fn create_task(&self, name: &str) -> Result<i64, std::io::Error>;
@@ -29,7 +26,3 @@ pub trait UiSource: Sink + Send + Sync {
     fn get_active_task(&self) -> Result<Option<i64>, std::io::Error>;
     fn set_active_task(&self, task_id: Option<i64>) -> Result<(), std::io::Error>;
 }
-
-
-
-

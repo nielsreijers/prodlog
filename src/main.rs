@@ -1,5 +1,5 @@
 use nix::sys::wait::waitpid;
-use sinks::UiSource;
+use sinks::Sink;
 use termion::color::Color;
 use std::fs::File;
 use std::io::{ Read, Stdout, Write };
@@ -601,7 +601,7 @@ fn import(import_file: &str, sink: &mut Box<dyn sinks::Sink>) -> Result<(), std:
     }
 
     print_prodlog_message(&format!("Importing from {:?}", import_file));
-    let source_sink: Box<dyn sinks::UiSource> = match
+    let source_sink: Box<dyn sinks::Sink> = match
         import_file.extension().unwrap_or_default().to_str().unwrap_or_default()
     {
         "sqlite" => {
@@ -654,7 +654,7 @@ async fn main() {
     let ui_port = get_config().port;
     tokio::spawn(async move {
         let sqlite_file = prodlog_dir.join("prodlog.sqlite");
-        let sink: Arc<RwLock<Box<dyn UiSource>>> = Arc::new(
+        let sink: Arc<RwLock<Box<dyn Sink>>> = Arc::new(
             RwLock::new(Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file)))
         );
         ui::run_ui(sink, ui_port).await;

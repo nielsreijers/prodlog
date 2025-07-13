@@ -7,7 +7,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 use std::path::PathBuf;
 use crate::{ helpers::compare_major_minor_versions, model::*, print_prodlog_message, print_prodlog_warning, prodlog_panic };
-use super::{ Sink, UiSource };
+use super::Sink;
 use r2d2_sqlite::SqliteConnectionManager;
 
 pub struct SqliteSink {
@@ -193,6 +193,41 @@ impl SqliteSink {
     }
 }
 
+
+fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
+    let capture_type: String = row.get("capture_type")?;
+    let uuid_str: String = row.get("uuid")?;
+    let uuid = Uuid::parse_str(&uuid_str).map_err(|e|
+        rusqlite::Error::InvalidParameterName(e.to_string())
+    )?;
+    Ok(CaptureV2_4 {
+        capture_type: if capture_type == "run" {
+            CaptureType::Run
+        } else {
+            CaptureType::Edit
+        },
+        uuid: uuid,
+        host: row.get("host")?,
+        cwd: row.get("cwd")?,
+        cmd: row.get("cmd")?,
+        start_time: row.get("start_time")?,
+        duration_ms: row.get("duration_ms")?,
+        message: row.get("message")?,
+        is_noop: row.get("is_noop")?,
+        exit_code: row.get("exit_code")?,
+        local_user: row.get("local_user")?,
+        remote_user: row.get("remote_user")?,
+        filename: row.get("filename")?,
+        terminal_rows: row.get("terminal_rows")?,
+        terminal_cols: row.get("terminal_cols")?,
+        task_id: row.get("task_id")?,
+        captured_output: row.get("output")?,
+        original_content: row.get("original_content")?,
+        edited_content: row.get("edited_content")?,
+    })
+}
+
+
 impl Sink for SqliteSink {
     fn add_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
         let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
@@ -232,42 +267,7 @@ impl Sink for SqliteSink {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         Ok(())
     }
-}
 
-fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
-    let capture_type: String = row.get("capture_type")?;
-    let uuid_str: String = row.get("uuid")?;
-    let uuid = Uuid::parse_str(&uuid_str).map_err(|e|
-        rusqlite::Error::InvalidParameterName(e.to_string())
-    )?;
-    Ok(CaptureV2_4 {
-        capture_type: if capture_type == "run" {
-            CaptureType::Run
-        } else {
-            CaptureType::Edit
-        },
-        uuid: uuid,
-        host: row.get("host")?,
-        cwd: row.get("cwd")?,
-        cmd: row.get("cmd")?,
-        start_time: row.get("start_time")?,
-        duration_ms: row.get("duration_ms")?,
-        message: row.get("message")?,
-        is_noop: row.get("is_noop")?,
-        exit_code: row.get("exit_code")?,
-        local_user: row.get("local_user")?,
-        remote_user: row.get("remote_user")?,
-        filename: row.get("filename")?,
-        terminal_rows: row.get("terminal_rows")?,
-        terminal_cols: row.get("terminal_cols")?,
-        task_id: row.get("task_id")?,
-        captured_output: row.get("output")?,
-        original_content: row.get("original_content")?,
-        edited_content: row.get("edited_content")?,
-    })
-}
-
-impl UiSource for SqliteSink {
     fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_4>, std::io::Error> {
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 

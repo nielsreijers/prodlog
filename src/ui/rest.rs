@@ -7,7 +7,7 @@ use similar::{ ChangeTag, TextDiff };
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{UiSource, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
+use crate::{model::{CaptureV2_4, CaptureV2_4Summary}, sinks::{Sink, Filters}, helpers::redact_passwords_from_entry, print_prodlog_warning};
 
 use super::ProdlogUiState;
 
@@ -43,7 +43,7 @@ pub struct TaskUpdateData {
 }
 
 pub async fn get_entry(
-    sink: Arc<RwLock<Box<dyn UiSource>>>,
+    sink: Arc<RwLock<Box<dyn Sink>>>,
     uuid: &str,
 ) -> Result<CaptureV2_4, (StatusCode, String)> {
     let uuid = match Uuid::parse_str(&uuid) {
