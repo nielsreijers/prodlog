@@ -194,7 +194,7 @@ impl SqliteSink {
 }
 
 
-fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
+fn from_row_entry(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
     let capture_type: String = row.get("capture_type")?;
     let uuid_str: String = row.get("uuid")?;
     let uuid = Uuid::parse_str(&uuid_str).map_err(|e|
@@ -224,6 +224,14 @@ fn from_row(row: &rusqlite::Row) -> rusqlite::Result<CaptureV2_4> {
         captured_output: row.get("output")?,
         original_content: row.get("original_content")?,
         edited_content: row.get("edited_content")?,
+    })
+}
+
+fn from_row_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
+    Ok(Task {
+        id: row.get("id")?,
+        name: row.get("name")?,
+        created_at: row.get("created_at")?,
     })
 }
 
@@ -319,7 +327,7 @@ impl Sink for SqliteSink {
 
         let entries = stmt
             .query_map(rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())), |row| {
-                from_row(row)
+                from_row_entry(row)
             })
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
             .collect::<Result<Vec<_>, _>>()
@@ -335,7 +343,7 @@ impl Sink for SqliteSink {
             conn.query_row(
                 "SELECT * FROM prodlog_entries WHERE uuid = ?",
                 params![uuid_str],
-                |row| { from_row(row) }
+                |row| { from_row_entry(row) }
             )
         {
             Ok(entry) => Ok(Some(entry)),
@@ -360,20 +368,30 @@ impl Sink for SqliteSink {
     fn get_all_tasks(&self) -> Result<Vec<Task>, std::io::Error> {
         let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         
-        let mut stmt = conn.prepare("SELECT id, name, created_at FROM tasks ORDER BY created_at DESC")
+        let mut stmt = conn.prepare("SELECT id, name, created_at FROM tasks ORDER BY id DESC")
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         
-        let tasks = stmt.query_map([], |row| {
-            Ok(Task {
-                id: row.get("id")?,
-                name: row.get("name")?,
-                created_at: row.get("created_at")?,
-            })
-        }).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+        let tasks = stmt.query_map([], |row| { from_row_task(row) })
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         
         Ok(tasks)
+    }
+
+    fn get_task_by_id(&self, id: i64) -> Result<Option<Task>, std::io::Error> {
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        match
+            conn.query_row(
+                "SELECT * FROM tasks WHERE id = ?",
+                params![id],
+                |row| { from_row_task(row) }
+            )
+        {
+            Ok(entry) => Ok(Some(entry)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+        }
     }
 
     fn update_task_name(&self, task_id: i64, name: &str) -> Result<(), std::io::Error> {

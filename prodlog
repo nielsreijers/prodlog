@@ -6,12 +6,16 @@ PRODLOG_VERSION="2.6.0"
 set -e
 
 PRODLOG_CMD_PREFIX=$'\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:'
-CMD_IS_INACTIVE="IS CURRENTLY INACTIVE"
+CMD_CHECK_IS_ACTIVE="IS CURRENTLY INACTIVE"
 CMD_ARE_YOU_RUNNING="PRODLOG, ARE YOU RUNNING?"
 CMD_START_CAPTURE_RUN="START CAPTURE RUN"
 CMD_START_CAPTURE_EDIT="START CAPTURE EDIT"
 CMD_STOP_CAPTURE_RUN="STOP CAPTURE RUN"
 CMD_STOP_CAPTURE_EDIT="STOP CAPTURE EDIT"
+CMD_TASK_LIST="TASK LIST"
+CMD_TASK_START_NEW="TASK START NEW"
+CMD_TASK_SET_ACTIVE="TASK SET ACTIVE"
+CMD_TASK_UNSET_ACTIVE="TASK UNSET ACTIVE"
 REPLY_YES_PRODLOG_IS_RUNNING="PRODLOG IS RUNNING"
 
 # Function to send commands to prodlog via stdout
@@ -31,15 +35,25 @@ send_command() {
 
 # Function to print help message
 print_help() {
-    echo "Usage: $0 run [-m <message>] <command> [args...]"
-    echo "       $0 edit [-m <message>] [-s] <filename>"
     echo "Record a command or an edit session and its output in prodlog. An instance of prodlog_server must be running."
     echo ""
+    echo "Usage: $0 run [-m <message>] <command> [args...]"
+    echo "       $0 edit [-m <message>] [-s] <filename>"
+    echo "       $0 task list"
+    echo "       $0 task start <description>"
+    echo "       $0 task set <id>"
+    echo "       $0 task unset"
     echo "  -m <message>   Optional message to log with the command or edit."
     echo "  -s             Use sudo to edit or run the command."
     echo ""
+    echo "Task management:"
+    echo "  task list                 Show recent tasks"
+    echo "  task start <description>  Create and activate a new task"
+    echo "  task set <id>             Activate an existing task"
+    echo "  task unset                Unset the active task, no task will be active"
+    echo ""
     echo "Testing if prodlog_server is running:"
-    send_command "$CMD_IS_INACTIVE"
+    send_command "$CMD_CHECK_IS_ACTIVE"
 }
 
 # Function to get base64-encoded file contents, or empty string if file doesn't exist
@@ -60,10 +74,54 @@ get_file_contents() {
     fi
 }
 
+# Function to handle task commands
+handle_task_command() {
+    local task_cmd="$1"
+    shift
+    
+    case "$task_cmd" in
+        "list")
+            send_command "$CMD_TASK_LIST"
+            ;;
+        "start")
+            if [[ $# -eq 0 ]]; then
+                echo "Error: Task name required for 'task start'"
+                exit 1
+            fi
+            local task_name="$*"
+            send_command "$CMD_TASK_START_NEW" "$task_name"
+            ;;
+        "set")
+            if [[ $# -eq 0 ]]; then
+                echo "Error: Task name required for 'task start'"
+                exit 1
+            fi
+            local task_id="$1"
+            send_command "$CMD_TASK_SET_ACTIVE" "$task_id"
+            ;;
+        "unset")
+            send_command "$CMD_TASK_UNSET_ACTIVE"
+            ;;
+        *)
+            echo "Error: Unknown task command '$task_cmd'"
+            print_help
+            exit 1
+            ;;
+    esac
+}
+
 # --- Main Script Logic ---
 
-# Check if the first argument is 'run' or 'edit'
-if [[ "$1" != "run" && "$1" != "edit" ]]; then
+# Check if the first argument is 'run', 'edit', or 'task'
+if [[ "$1" == "task" ]]; then
+    if [[ $# -lt 2 ]]; then
+        echo "Error: Task command required"
+        print_help
+        exit 1
+    fi
+    handle_task_command "$2" "${@:3}"
+    exit 0
+elif [[ "$1" != "run" && "$1" != "edit" ]]; then
     print_help
     exit 1
 fi

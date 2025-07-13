@@ -32,12 +32,16 @@ mod config;
 mod model;
 
 const PRODLOG_CMD_PREFIX: &[u8] = "\x1A(dd0d3038-1d43-11f0-9761-022486cd4c38) PRODLOG:".as_bytes();
-const CMD_IS_INACTIVE: &str = "IS CURRENTLY INACTIVE";
+const CMD_CHECK_IS_ACTIVE: &str = "IS CURRENTLY INACTIVE";
 const CMD_ARE_YOU_RUNNING: &str = "PRODLOG, ARE YOU RUNNING?";
 const CMD_START_CAPTURE_RUN: &str = "START CAPTURE RUN";
 const CMD_START_CAPTURE_EDIT: &str = "START CAPTURE EDIT";
 const CMD_STOP_CAPTURE_RUN: &str = "STOP CAPTURE RUN";
 const CMD_STOP_CAPTURE_EDIT: &str = "STOP CAPTURE EDIT";
+const CMD_TASK_LIST: &str = "TASK LIST";
+const CMD_TASK_START_NEW: &str = "TASK START NEW";
+const CMD_SET_ACTIVE_TASK: &str = "TASK SET ACTIVE";
+const CMD_UNSET_ACTIVE_TASK: &str = "TASK UNSET ACTIVE";
 const REPLY_YES_PRODLOG_IS_RUNNING: &[u8] = "PRODLOG IS RUNNING\n".as_bytes();
 
 enum StreamState {
@@ -298,8 +302,19 @@ impl StdoutHandler {
                         StreamState::Completed(cmd, args, new_pos) => {
                             pos = new_pos;
                             match cmd.as_str() {
-                                CMD_IS_INACTIVE => {
+                                CMD_CHECK_IS_ACTIVE => {
                                     print_prodlog_message("Prodlog is currently active!");
+                                    // Show current active task if any
+                                    if let Ok(Some(task_id)) = self.sink.get_active_task() {
+                                        if let Ok(task) = self.sink.get_task_by_id(task_id) {
+                                            if let Some(task) = task {
+                                                let name = task.name.clone();
+                                                print_prodlog_message(&format!("Active task: {}", name));
+                                            } else {
+                                                print_prodlog_warning(&format!("Active task set to id {}, but no task with that id found", task_id));
+                                            }
+                                        }
+                                    }
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 CMD_ARE_YOU_RUNNING => {
@@ -467,6 +482,90 @@ impl StdoutHandler {
                                         );
                                     }
                                     self.capturing = None;
+                                    self.state = StdoutHandlerState::Normal;
+                                }
+                                CMD_TASK_START_NEW => {
+                                    if let Some(task_name) = args.get(0) {
+                                        // Create and activate a new task
+                                        if let Ok(task_id) = self.sink.create_task(task_name) {
+                                            // Set it as active
+                                            if let Ok(_) = self.sink.set_active_task(Some(task_id)) {
+                                                print_prodlog_message(&format!("Created and activated task: {}", task_name));
+                                            } else {
+                                                print_prodlog_message("Error: Failed to set active task");
+                                            }
+                                        } else {
+                                            print_prodlog_message("Error: Failed to create task");
+                                        }
+                                        
+                                    } else {
+                                        print_prodlog_message("Error: Task name required");
+                                    }
+                                    self.state = StdoutHandlerState::Normal;
+                                }
+                                CMD_TASK_LIST => {
+                                    if let Ok(tasks) = self.sink.get_all_tasks() {
+                                        let active_task_id = self.sink.get_active_task().unwrap_or(None);
+                                        if tasks.is_empty() {
+                                            print_prodlog_message("No recent tasks found");
+                                        } else {
+                                            print_prodlog_message("Recent tasks:");
+                                            // Show the 10 tasks with highest ID
+                                            let mut sorted_tasks: Vec<_> = tasks.into_iter().collect();
+                                            sorted_tasks.sort_by_key(|task| std::cmp::Reverse(task.id));
+                                            for task in sorted_tasks.into_iter().take(10) {
+                                                if Some(task.id) == active_task_id {
+                                                    print_prodlog_message(&format!(" (ACTIVE) {}: {}", task.id, task.name));
+                                                } else {
+                                                    print_prodlog_message(&format!("          {}: {}", task.id, task.name));
+                                                }
+                                            }
+                                        }
+                                    }                                    
+                                    self.state = StdoutHandlerState::Normal;
+                                }
+                                CMD_SET_ACTIVE_TASK => {
+                                    if let Some(task_id_str) = args.get(0) {
+                                        if let Ok(task_id) = task_id_str.parse::<i64>() {
+                                            if let Ok(task) = self.sink.get_task_by_id(task_id) {
+                                                if let Some(task) = task {
+                                                    if let Ok(_) = self.sink.set_active_task(Some(task_id)) {
+                                                        print_prodlog_message(&format!("Activated task: {}", task.name));
+                                                    } else {
+                                                        print_prodlog_message("Error: Failed to set active task");
+                                                    }
+                                                } else {
+                                                    print_prodlog_warning(&format!("No task with id {} found", task_id));
+                                                }
+                                            } else {
+                                                print_prodlog_warning(&format!("Error retrieving task with id {}", task_id));
+                                            }
+                                        } else {
+                                            print_prodlog_message(&format!("Error: Couldn't parse task ID {}", task_id_str));
+                                        }
+                                    } else {
+                                        print_prodlog_message("Error: Task ID required");
+                                    }
+                                    self.state = StdoutHandlerState::Normal;
+                                }
+                                CMD_UNSET_ACTIVE_TASK => {
+                                    if let Ok(previously_active_task_id) = self.sink.get_active_task() {
+                                        if let Some(previously_active_task_id) = previously_active_task_id {
+                                            if let Ok(_) = self.sink.set_active_task(None) {
+                                                if let Ok(Some(task)) = self.sink.get_task_by_id(previously_active_task_id) {
+                                                    print_prodlog_message(&format!("Deactivated task: {}. No task is active now.", task.name));
+                                                } else {
+                                                    print_prodlog_message("Deactivated active task. No task is active now.");
+                                                }
+                                            } else {
+                                                print_prodlog_warning("Error: Failed to unset active task");
+                                            }
+                                        } else {
+                                            print_prodlog_message("No task was active, nothing to unset.");
+                                        }
+                                    } else {
+                                        print_prodlog_warning(&format!("Error getting currently active task"));
+                                    }
                                     self.state = StdoutHandlerState::Normal;
                                 }
                                 _ => {
