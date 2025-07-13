@@ -55,7 +55,7 @@ struct StdoutHandler {
     child_stdin_tx: mpsc::Sender<Vec<u8>>,
     capturing: Option<CaptureV2_4>,
     state: StdoutHandlerState,
-    sinks: Vec<Box<dyn sinks::Sink>>,
+    sink: Box<dyn sinks::Sink>,
 }
 
 // TODO unify these different ways of printing messages
@@ -91,9 +91,9 @@ impl StdoutHandler {
     fn new(
         child_stdin_tx: mpsc::Sender<Vec<u8>>,
         stdout: RawTerminal<Stdout>,
-        sinks: Vec<Box<dyn sinks::Sink>>
+        sink: Box<dyn sinks::Sink>
     ) -> Self {
-        Self { child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal, sinks }
+        Self { child_stdin_tx, stdout, capturing: None, state: StdoutHandlerState::Normal, sink }
     }
 
     fn write_and_flush(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
@@ -140,7 +140,7 @@ impl StdoutHandler {
     fn stop_capturing_run(
         capture: &mut CaptureV2_4,
         exit_code: i32,
-        sinks: &mut Vec<Box<dyn sinks::Sink>>
+        sink: &mut Box<dyn sinks::Sink>
     ) -> Result<(), std::io::Error> {
         capture.exit_code = exit_code;
         capture.duration_ms = Utc::now()
@@ -149,11 +149,9 @@ impl StdoutHandler {
         let (cols, rows) = terminal_size()?;
         capture.terminal_cols = cols;
         capture.terminal_rows = rows;
-        for sink in sinks {
-            match sink.add_entry(capture) {
-                Ok(_) => (),
-                Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
-            }
+        match sink.add_entry(capture) {
+            Ok(_) => (),
+            Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
         }
 
         Ok(())
@@ -197,18 +195,16 @@ impl StdoutHandler {
         capture: &mut CaptureV2_4,
         exit_code: i32,
         edited_content: Vec<u8>,
-        sinks: &mut Vec<Box<dyn sinks::Sink>>
+        sink: &mut Box<dyn sinks::Sink>
     ) -> Result<(), std::io::Error> {
         capture.exit_code = exit_code;
         capture.duration_ms = Utc::now()
             .signed_duration_since(capture.start_time)
             .num_milliseconds() as u64;
         capture.edited_content = edited_content;
-        for sink in sinks {
-            match sink.add_entry(capture) {
-                Ok(_) => (),
-                Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
-            }
+        match sink.add_entry(capture) {
+            Ok(_) => (),
+            Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
         }
 
         Ok(())
@@ -383,7 +379,7 @@ impl StdoutHandler {
                                         Self::stop_capturing_run(
                                             capture,
                                             exit_code,
-                                            &mut self.sinks
+                                            &mut self.sink
                                         )?;
                                     } else {
                                         print_prodlog_message(
@@ -463,7 +459,7 @@ impl StdoutHandler {
                                             capture,
                                             exit_code,
                                             edited_content,
-                                            &mut self.sinks
+                                            &mut self.sink
                                         )?;
                                     } else {
                                         print_prodlog_message(
@@ -515,17 +511,15 @@ fn set_winsize(fd: RawFd) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn get_sinks(prodlog_dir: &PathBuf) -> Vec<Box<dyn sinks::Sink>> {
+fn get_sink(prodlog_dir: &PathBuf) -> Box<dyn sinks::Sink> {
     fs::create_dir_all(prodlog_dir).expect("Failed to create directory");
     let sqlite_file = prodlog_dir.join("prodlog.sqlite");
 
-    vec![
-        Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file))
-    ]
+    Box::new(sinks::sqlite::SqliteSink::new(&sqlite_file))
 }
 
 async fn run_parent(
-    sinks: Vec<Box<dyn sinks::Sink>>,
+    sink: Box<dyn sinks::Sink>,
     child: nix::unistd::Pid,
     master: std::os::fd::OwnedFd
 ) -> Result<(), std::io::Error> {
@@ -566,7 +560,7 @@ async fn run_parent(
     // Start forwarding the child's stdout to our stdout.
     let _forward_stdout = tokio::task::spawn_blocking(move || {
         let mut buffer = [0; 1024];
-        let mut stream_handler = StdoutHandler::new(child_stdin_tx2, raw_stdout, sinks);
+        let mut stream_handler = StdoutHandler::new(child_stdin_tx2, raw_stdout, sink);
         loop {
             let n = raw_master_read.read(&mut buffer);
             if let Ok(n) = n {
@@ -599,7 +593,7 @@ async fn run_parent(
     Ok(())
 }
 
-fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<(), std::io::Error> {
+fn import(import_file: &str, sink: &mut Box<dyn sinks::Sink>) -> Result<(), std::io::Error> {
     let import_file = PathBuf::from(import_file);
 
     if !import_file.exists() {
@@ -625,12 +619,10 @@ fn import(import_file: &str, sinks: &mut Vec<Box<dyn sinks::Sink>>) -> Result<()
     let entries = source_sink.get_entries(&sinks::Filters::default())?;
     print_prodlog_message(&format!("Found {} entries to import", entries.len()));
     for entry in entries {
-        for sink in sinks.iter_mut() {
-            if let Err(e) = sink.add_entry(&entry) {
-                print_prodlog_warning(
-                    &format!("Error writing entry {} to sink: {}", entry.uuid, e)
-                );
-            }
+        if let Err(e) = sink.add_entry(&entry) {
+            print_prodlog_warning(
+                &format!("Error writing entry {} to sink: {}", entry.uuid, e)
+            );
         }
     }
     print_prodlog_message("Import done.");
@@ -651,11 +643,11 @@ async fn main() {
     print_prodlog_message(&format!("prodlog logging to {:?}", prodlog_dir));
 
     // Create the directory doesn't exist
-    let mut sinks = get_sinks(&prodlog_dir);
+    let mut sink = get_sink(&prodlog_dir);
 
     // Import a prodlog json or sqlite file if specified2
     if let Some(import_file) = &get_config().import {
-        import(&import_file, &mut sinks).unwrap();
+        import(&import_file, &mut sink).unwrap();
     }
 
     // Start the UI in a separate task
@@ -674,7 +666,7 @@ async fn main() {
             is_child = "CHILD PROCESS ";
             run_child()
         },
-        ForkptyResult::Parent { child, master } => { run_parent(sinks, child, master).await }
+        ForkptyResult::Parent { child, master } => { run_parent(sink, child, master).await }
     };
     if let Err(e) = result {
         prodlog_panic(&format!("PRODLOG {}EXITING WITH ERROR: {}", is_child, e));
