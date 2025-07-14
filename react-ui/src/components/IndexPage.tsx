@@ -127,6 +127,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
     from: filters.date_from || '',
     to: filters.date_to || ''
   });
+  const [currentPreset, setCurrentPreset] = useState<string | null>(filters.date_range || null);
   
   // Use ref to track current filters without causing re-renders
   const filtersRef = useRef(filters);
@@ -141,7 +142,8 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
       from: filters.date_from || '',
       to: filters.date_to || ''
     });
-  }, [filters.host, filters.search, filters.search_content, filters.date_from, filters.date_to]);
+    setCurrentPreset(filters.date_range || null);
+  }, [filters.host, filters.search, filters.search_content, filters.date_from, filters.date_to, filters.date_range]);
   
   // Debounced effect to search without updating URL
   useEffect(() => {
@@ -152,6 +154,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
     const hasChanged = 
       localDateRange.from !== currentFilters.date_from ||
       localDateRange.to !== currentFilters.date_to ||
+      currentPreset !== currentFilters.date_range ||
       localHost !== currentFilters.host ||
       localSearch !== currentFilters.search ||
       localSearchContent !== currentFilters.search_content;
@@ -163,6 +166,7 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
       const searchFilters = {
         date_from: localDateRange.from || undefined,
         date_to: localDateRange.to || undefined,
+        date_range: currentPreset || undefined,
         host: localHost || undefined,
         search: localSearch || undefined,
         search_content: localSearchContent || undefined,
@@ -185,14 +189,15 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
     }, 300); // 300ms delay
     
     return () => clearTimeout(timeoutId);
-  }, [localHost, localSearch, localSearchContent, localDateRange.from, localDateRange.to]);
+  }, [localHost, localSearch, localSearchContent, localDateRange.from, localDateRange.to, currentPreset]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Force immediate update on form submit
     onFiltersChange({
-      date_from: localDateRange.from || undefined,
-      date_to: localDateRange.to || undefined,
+      date_from: currentPreset ? undefined : (localDateRange.from || undefined),
+      date_to: currentPreset ? undefined : (localDateRange.to || undefined),
+      date_range: currentPreset || undefined,
       show_noop: filtersRef.current.show_noop,
       host: localHost || undefined,
       search: localSearch || undefined,
@@ -209,7 +214,13 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
     setLocalSearch('');
     setLocalSearchContent('');
     setLocalDateRange({ from: '', to: '' });
+    setCurrentPreset(null);
     onFiltersChange({});
+  };
+
+  const handleDateRangeChange = (range: { from: string; to: string }, preset?: string) => {
+    setLocalDateRange(range);
+    setCurrentPreset(preset || null);
   };
 
   return (
@@ -220,7 +231,8 @@ function FilterForm({ filters, onFiltersChange, onSearchResults, onExpandToggle,
         </button>
         <DateRangePicker
           value={localDateRange}
-          onChange={(range) => setLocalDateRange(range)}
+          onChange={handleDateRangeChange}
+          currentPreset={currentPreset}
         />
         <input
           type="text"
@@ -553,6 +565,7 @@ export default function IndexPage() {
   const filters = useMemo(() => ({
     date_from: searchParams.get('date_from') || undefined,
     date_to: searchParams.get('date_to') || undefined,
+    date_range: searchParams.get('date_range') || undefined,
     host: searchParams.get('host') || undefined,
     search: searchParams.get('search') || undefined,
     search_content: searchParams.get('search_content') || undefined,
@@ -565,8 +578,15 @@ export default function IndexPage() {
   // Update URL when filters change
   const updateFilters = (newFilters: Filters) => {
     const params = new URLSearchParams();
-    if (newFilters.date_from) params.set('date_from', newFilters.date_from);
-    if (newFilters.date_to) params.set('date_to', newFilters.date_to);
+    
+    // Prioritize date_range over explicit dates
+    if (newFilters.date_range) {
+      params.set('date_range', newFilters.date_range);
+    } else {
+      if (newFilters.date_from) params.set('date_from', newFilters.date_from);
+      if (newFilters.date_to) params.set('date_to', newFilters.date_to);
+    }
+    
     if (newFilters.host) params.set('host', newFilters.host);
     if (newFilters.search) params.set('search', newFilters.search);
     if (newFilters.search_content) params.set('search_content', newFilters.search_content);

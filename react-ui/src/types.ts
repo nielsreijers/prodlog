@@ -57,6 +57,7 @@ export interface TaskGroup {
 export interface Filters {
   date_from?: string;
   date_to?: string;
+  date_range?: string; // Preset range like "last_7_days", "today", etc.
   host?: string;
   search?: string;
   search_content?: string;

@@ -8,14 +8,16 @@ interface DateRange {
 interface DateRangePreset {
   label: string;
   value: DateRange;
+  preset?: string; // The preset key for URL storage
 }
 
 interface DateRangePickerProps {
   value: DateRange;
-  onChange: (range: DateRange) => void;
+  onChange: (range: DateRange, preset?: string) => void;
+  currentPreset?: string | null;
 }
 
-const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) => {
+const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange, currentPreset }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [tempRange, setTempRange] = useState<DateRange>(value);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
     return [
       {
         label: 'Today',
+        preset: 'today',
         value: {
           from: formatDate(today),
           to: formatDate(today)
@@ -59,6 +62,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
       },
       {
         label: 'Yesterday',
+        preset: 'yesterday',
         value: {
           from: formatDate(yesterday),
           to: formatDate(yesterday)
@@ -66,6 +70,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
       },
       {
         label: 'Last 7 days',
+        preset: 'last_7_days',
         value: {
           from: formatDate(last7Days),
           to: formatDate(today)
@@ -73,6 +78,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
       },
       {
         label: 'Last 30 days',
+        preset: 'last_30_days',
         value: {
           from: formatDate(last30Days),
           to: formatDate(today)
@@ -80,6 +86,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
       },
       {
         label: 'Last 365 days',
+        preset: 'last_365_days',
         value: {
           from: formatDate(last365Days),
           to: formatDate(today)
@@ -87,6 +94,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
       },
       {
         label: 'All time',
+        preset: 'all_time',
         value: {
           from: '',
           to: ''
@@ -98,12 +106,12 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
   const presets = generatePresets();
 
   const handlePresetClick = (preset: DateRangePreset) => {
-    onChange(preset.value);
+    onChange(preset.value, preset.preset);
     setIsOpen(false);
   };
 
   const handleCustomApply = () => {
-    onChange(tempRange);
+    onChange(tempRange); // No preset for custom ranges
     setIsOpen(false);
   };
 
@@ -114,11 +122,19 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ value, onChange }) =>
 
   // Format display text
   const getDisplayText = () => {
+    // If we have a current preset, find its label
+    if (currentPreset) {
+      const matchingPreset = presets.find(preset => preset.preset === currentPreset);
+      if (matchingPreset) {
+        return matchingPreset.label;
+      }
+    }
+    
     if (!value.from && !value.to) {
       return 'All time';
     }
     
-    // Check if matches any preset
+    // Check if matches any preset (fallback)
     const matchingPreset = presets.find(
       preset => preset.value.from === value.from && preset.value.to === value.to
     );

@@ -13,8 +13,88 @@ import {
   TaskCreateResponse
 } from './types';
 
+// Convert preset date ranges to actual dates
+function calculateDateRange(preset: string): { from: string; to: string } {
+  const today = new Date();
+  const formatDate = (date: Date) => date.toISOString().split('T')[0];
+  
+  switch (preset) {
+    case 'today':
+      return {
+        from: formatDate(today),
+        to: formatDate(today)
+      };
+    
+    case 'yesterday': {
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return {
+        from: formatDate(yesterday),
+        to: formatDate(yesterday)
+      };
+    }
+    
+    case 'last_7_days': {
+      const last7Days = new Date(today);
+      last7Days.setDate(last7Days.getDate() - 7);
+      return {
+        from: formatDate(last7Days),
+        to: formatDate(today)
+      };
+    }
+    
+    case 'last_30_days': {
+      const last30Days = new Date(today);
+      last30Days.setDate(last30Days.getDate() - 30);
+      return {
+        from: formatDate(last30Days),
+        to: formatDate(today)
+      };
+    }
+    
+    case 'last_365_days': {
+      const last365Days = new Date(today);
+      last365Days.setDate(last365Days.getDate() - 365);
+      return {
+        from: formatDate(last365Days),
+        to: formatDate(today)
+      };
+    }
+    
+    case 'all_time':
+      return {
+        from: '',
+        to: ''
+      };
+    
+    default:
+      return {
+        from: '',
+        to: ''
+      };
+  }
+}
+
 class ApiService {
   private baseUrl = '/api';
+
+  // Helper method to resolve date ranges from filters
+  private resolveDateRange(filters: Filters): { date_from?: string; date_to?: string } {
+    // If we have a preset range, calculate the actual dates
+    if (filters.date_range) {
+      const { from, to } = calculateDateRange(filters.date_range);
+      return {
+        date_from: from || undefined,
+        date_to: to || undefined
+      };
+    }
+    
+    // Otherwise use the explicit dates if provided
+    return {
+      date_from: filters.date_from,
+      date_to: filters.date_to
+    };
+  }
 
   async get<T>(url: string): Promise<T> {
     const response = await fetch(this.baseUrl + url);
@@ -44,8 +124,11 @@ class ApiService {
   async getEntries(filters: Filters = {}): Promise<LogEntry[]> {
     const params = new URLSearchParams();
     
-    if (filters.date_from) params.append('date_from', filters.date_from);
-    if (filters.date_to) params.append('date_to', filters.date_to);
+    // Resolve date range from preset or explicit dates
+    const { date_from, date_to } = this.resolveDateRange(filters);
+    
+    if (date_from) params.append('date_from', date_from);
+    if (date_to) params.append('date_to', date_to);
     if (filters.host) params.append('host', filters.host);
     if (filters.search) params.append('search', filters.search);
     if (filters.search_content) params.append('search_content', filters.search_content);
@@ -61,8 +144,11 @@ class ApiService {
   async getEntriesSummary(filters: Filters = {}): Promise<LogEntrySummary[]> {
     const params = new URLSearchParams();
     
-    if (filters.date_from) params.append('date_from', filters.date_from);
-    if (filters.date_to) params.append('date_to', filters.date_to);
+    // Resolve date range from preset or explicit dates
+    const { date_from, date_to } = this.resolveDateRange(filters);
+    
+    if (date_from) params.append('date_from', date_from);
+    if (date_to) params.append('date_to', date_to);
     if (filters.host) params.append('host', filters.host);
     if (filters.search) params.append('search', filters.search);
     if (filters.search_content) params.append('search_content', filters.search_content);
