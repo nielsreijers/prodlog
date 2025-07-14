@@ -191,6 +191,49 @@ impl SqliteSink {
             Err(e) => { prodlog_panic(&format!("Error migrating database: {}", e)) }
         }
     }
+
+    fn insert_or_update_entry(&self, capture: &CaptureV2_4, is_insert: bool) -> Result<(), std::io::Error> {
+        let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
+        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let task_id = if is_insert {
+            self.get_active_task()?
+        } else {
+            capture.task_id
+        };
+        conn
+            .execute(
+                "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, message, is_noop, exit_code, local_user, remote_user, filename, terminal_rows, terminal_cols, task_id, output, original_content, edited_content)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                params![
+                    if capture.capture_type == CaptureType::Run {
+                        "run"
+                    } else {
+                        "edit"
+                    },
+                    capture.uuid.to_string(),
+                    &capture.host,
+                    &capture.cwd,
+                    &capture.cmd,
+                    capture.start_time.to_rfc3339(),
+                    end_time.to_rfc3339(),
+                    capture.duration_ms as i64,
+                    capture.message,
+                    capture.is_noop,
+                    capture.exit_code,
+                    capture.local_user,
+                    capture.remote_user,
+                    capture.filename,
+                    capture.terminal_rows,
+                    capture.terminal_cols,
+                    task_id,
+                    &capture.captured_output,
+                    capture.original_content,
+                    capture.edited_content
+                ]
+            )
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        Ok(())
+    }
 }
 
 
@@ -237,43 +280,12 @@ fn from_row_task(row: &rusqlite::Row) -> rusqlite::Result<Task> {
 
 
 impl Sink for SqliteSink {
-    fn add_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
-        let end_time = capture.start_time + Duration::milliseconds(capture.duration_ms as i64);
-        let conn = self.pool.get().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fn add_new_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
+        self.insert_or_update_entry(capture, true)
+    }
 
-        conn
-            .execute(
-                "INSERT OR REPLACE INTO prodlog_entries (capture_type, uuid, host, cwd, cmd, start_time, end_time, duration_ms, message, is_noop, exit_code, local_user, remote_user, filename, terminal_rows, terminal_cols, task_id, output, original_content, edited_content)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-                params![
-                    if capture.capture_type == CaptureType::Run {
-                        "run"
-                    } else {
-                        "edit"
-                    },
-                    capture.uuid.to_string(),
-                    &capture.host,
-                    &capture.cwd,
-                    &capture.cmd,
-                    capture.start_time.to_rfc3339(),
-                    end_time.to_rfc3339(),
-                    capture.duration_ms as i64,
-                    capture.message,
-                    capture.is_noop,
-                    capture.exit_code,
-                    capture.local_user,
-                    capture.remote_user,
-                    capture.filename,
-                    capture.terminal_rows,
-                    capture.terminal_cols,
-                    self.get_active_task()?,
-                    &capture.captured_output,
-                    capture.original_content,
-                    capture.edited_content
-                ]
-            )
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        Ok(())
+    fn update_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error> {
+        self.insert_or_update_entry(capture, false)
     }
 
     fn get_entries(&self, filters: &super::Filters) -> Result<Vec<CaptureV2_4>, std::io::Error> {

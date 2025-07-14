@@ -16,8 +16,9 @@ pub struct Filters {
 }
 
 pub trait Sink: Send + Sync {
-    fn add_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error>;
+    fn add_new_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error>;
 
+    fn update_entry(&self, capture: &CaptureV2_4) -> Result<(), std::io::Error>;
     fn get_entries(&self, filters: &Filters) -> Result<Vec<CaptureV2_4>, std::io::Error>;
     fn get_entry_by_id(&self, uuid: Uuid) -> Result<Option<CaptureV2_4>, std::io::Error>;
     fn create_task(&self, name: &str) -> Result<i64, std::io::Error>;

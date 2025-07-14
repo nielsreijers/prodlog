@@ -153,7 +153,7 @@ impl StdoutHandler {
         let (cols, rows) = terminal_size()?;
         capture.terminal_cols = cols;
         capture.terminal_rows = rows;
-        match sink.add_entry(capture) {
+        match sink.add_new_entry(capture) {
             Ok(_) => (),
             Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
         }
@@ -206,7 +206,7 @@ impl StdoutHandler {
             .signed_duration_since(capture.start_time)
             .num_milliseconds() as u64;
         capture.edited_content = edited_content;
-        match sink.add_entry(capture) {
+        match sink.add_new_entry(capture) {
             Ok(_) => (),
             Err(e) => print_prodlog_message(&format!("Error writing to sink: {}", e)),
         }
@@ -718,7 +718,7 @@ fn import(import_file: &str, sink: &mut Box<dyn sinks::Sink>) -> Result<(), std:
     let entries = source_sink.get_entries(&sinks::Filters::default())?;
     print_prodlog_message(&format!("Found {} entries to import", entries.len()));
     for entry in entries {
-        if let Err(e) = sink.add_entry(&entry) {
+        if let Err(e) = sink.add_new_entry(&entry) {
             print_prodlog_warning(
                 &format!("Error writing entry {} to sink: {}", entry.uuid, e)
             );

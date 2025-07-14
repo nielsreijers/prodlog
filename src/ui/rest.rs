@@ -123,7 +123,7 @@ pub async fn handle_entry_post(
         Err((status, message)) => return (status, Json(json!({ "error": message }))).into_response(),
     };
 
-    match sink.write().await.add_entry(&entry) {
+    match sink.write().await.update_entry(&entry) {
         Ok(_) => (StatusCode::OK, Json(json!({ "message": "Entry updated successfully" }))).into_response(),
         Err(err) => {
             let error_msg = format!("Error saving entry {}: {}", entry.uuid, err);
@@ -191,7 +191,7 @@ pub async fn handle_entry_redact_post(
     }
 
     // Save the redacted entry
-    match sink.write().await.add_entry(&entry) {
+    match sink.write().await.update_entry(&entry) {
         Ok(_) => (StatusCode::OK, Json(json!({ "message": "Password redacted successfully" }))).into_response(),
         Err(err) => {
             let error_msg = format!("Error saving redacted entry {}: {}", entry.uuid, err);
@@ -242,7 +242,7 @@ pub async fn handle_bulk_redact_post(
 
         // Save the modified entry if it was changed
         if entry_modified {
-            match sink.write().await.add_entry(&modified_entry) {
+            match sink.write().await.update_entry(&modified_entry) {
                 Ok(_) => redacted_count += 1,
                 Err(e) => {
                     let error_msg = format!("Error saving redacted entry {}: {}", modified_entry.uuid, e);
