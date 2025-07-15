@@ -97,3 +97,74 @@ pub fn redact_passwords_from_entry(entry: &mut CaptureV2_4, passwords: &[String]
 
     redacted
 }
+
+pub fn unescape_and_unquote_cmd(raw_cmd: &str) -> String {
+    let mut result = Vec::new();
+    let mut current_element = String::new();
+    let mut escaped = false;
+
+    let mut chars = raw_cmd.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if escaped {
+            // Previous character was a backslash: unescape this character
+            current_element.push(ch);
+            escaped = false;
+        } else if ch == '\\' {
+            // This is an escape character: unescape the next character
+            escaped = true;
+        } else if ch == ' ' {
+            // End of element since this space was not escaped
+            result.push(clean_element(&current_element));
+            current_element.clear();
+        } else {
+            // Regular character
+            current_element.push(ch);
+        }
+    }
+
+    // Add the last element if not empty
+    if !current_element.is_empty() {
+        result.push(clean_element(&current_element));
+    }
+
+    result.join(" ")
+}
+
+fn clean_element(element: &str) -> String {
+    // Check if element needs quotes (contains special characters)
+    let unquoted = unquote_element(element);
+
+    let needs_quotes = unquoted.chars().any(|c| {
+        matches!(c, '$' | ' ' | '\t' | '\n' | '!' | '*' | '?' | '[' | ']' | '{' | '}' | '(' | ')' | ';' | '&' | '|' | '<' | '>' | '`' | '~' | '#' | '\'' | '"' | '\\')
+    });
+
+    if needs_quotes {
+        // Keep the element as-is since it contains special characters
+        element.to_string()
+    } else {
+        unquoted
+    }
+}
+
+fn unquote_element(element: &str) -> String {
+    if (element.starts_with('"') && element.ends_with('"') && element.len() > 1)
+       || (element.starts_with('\'') && element.ends_with('\'') && element.len() > 1) {
+        element[1..element.len()-1].to_string()
+    } else {
+        element.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unescape_and_unquote_cmd_simple() {
+        // The command received from the prodlog script will have every element quoted and spaces and backslashes escaped.
+        // This function unescapes the command and unquotes the elements if the do not contain special characters.
+        assert_eq!(unescape_and_unquote_cmd("'ls' '-l'"), "ls -l");
+        assert_eq!(unescape_and_unquote_cmd("'echo' 'hello\\ world'"), "echo 'hello world'");
+        assert_eq!(unescape_and_unquote_cmd("'echo' '\\\\'"), "echo '\\'");
+    }
+}

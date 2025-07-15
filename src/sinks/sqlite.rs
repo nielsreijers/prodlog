@@ -60,6 +60,9 @@ fn migrate_up_one(
             conn.execute("INSERT OR IGNORE INTO active_task (id, task_id) VALUES (1, NULL)", [])?;
             Ok("2.6".to_string())
         }
+        "2.6" => {
+            Ok("2.7".to_string())
+        }
         _ => {
             prodlog_panic(
                 &format!("Database schema version {} is not supported. Please upgrade Prodlog.", version)

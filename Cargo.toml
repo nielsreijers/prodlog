@@ -1,6 +1,6 @@
 [package]
 name = "prodlog"
-version = "2.6.0"
+version = "2.7.0"
 edition = "2021"
 authors = ["Niels Reijers <prodlog@mail.nielsreijers.com>"]
 description = "A tool for logging and viewing terminal output with a web interface"

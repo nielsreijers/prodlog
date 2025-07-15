@@ -24,6 +24,7 @@ use whoami;
 use model::{ CaptureType, CaptureV2_4 };
 
 use crate::config::get_config;
+use crate::helpers::unescape_and_unquote_cmd;
 
 mod ui;
 mod sinks;
@@ -347,7 +348,7 @@ impl StdoutHandler {
                                 CMD_START_CAPTURE_RUN => {
                                     // TODO: error handling
                                     if
-                                        let (Some(host), Some(cwd), Some(cmd), Some(message), Some(remote_user)) = (
+                                        let (Some(host), Some(cwd), Some(raw_cmd), Some(message), Some(remote_user)) = (
                                             args.get(0),
                                             args.get(1),
                                             args.get(2),
@@ -355,6 +356,7 @@ impl StdoutHandler {
                                             args.get(4),
                                         )
                                     {
+                                        let cmd = unescape_and_unquote_cmd(raw_cmd);
                                         print_prodlog_message(
                                             &format!(
                                                 "Starting capture of {} on {}:{}",
@@ -364,7 +366,7 @@ impl StdoutHandler {
                                             )
                                         );
                                         self.capturing = Some(
-                                            Self::start_capturing_run(host, cwd, cmd, message, remote_user)?
+                                            Self::start_capturing_run(host, cwd, &cmd, message, remote_user)?
                                         );
                                         self.state = StdoutHandlerState::Normal;
                                         pos = new_pos;

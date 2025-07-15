@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PRODLOG_VERSION="2.6.0"
+PRODLOG_VERSION="2.7.0"
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
@@ -202,7 +202,14 @@ if [[ "$mode" == "run" ]]; then
     else
         cmd="$*"
     fi
-    send_command "$CMD_START_CAPTURE_RUN" "$hostname" "$cwd" "$cmd" "$message" "$username"
+    quoted_cmd=""
+    for arg in "${@@Q}"; do
+        temp=${arg//\\/\\\\}
+        escaped=${temp// /\\ }
+        quoted_cmd+=" $escaped"
+    done
+    quoted_cmd=${quoted_cmd# } 
+    send_command "$CMD_START_CAPTURE_RUN" "$hostname" "$cwd" "$quoted_cmd" "$message" "$username"
     on_exit() {
         exit_status=$?
         send_command "$CMD_STOP_CAPTURE_RUN" "$exit_status"
